@@ -371,7 +371,12 @@ function getBestBets(){
 
 // ═══ SMART SLIPS ═══
 function getConvictionLegs(){
-  const bets=getBestBets().filter(b=>b.edge>0);if(!bets.length)return[];
+  const SLIP_WORTHY=new Set(["PTS","G","A","SOG","BLK","PPP","SV","DK_FP"]);
+  const bets=getBestBets().filter(b=>b.edge>0).filter(b=>{
+    if(!SLIP_WORTHY.has(b.metric))return false;
+    if(b.lean==="UNDER"&&parseFloat(b.dkLine)<=0.5)return false;
+    return true;
+  });if(!bets.length)return[];
   const aiMap=new Map();st.picks.forEach(pk=>{if(pk.player)aiMap.set(pk.player.toLowerCase(),pk)});
   const streakMap=new Map();try{getStreaks().forEach(s=>{streakMap.set(`${s.player.toLowerCase()}|${s.stat}`,s)})}catch(e){}
   const legs=[];
