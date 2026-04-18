@@ -355,6 +355,7 @@ function propToLogCol(m){const map={G_SV:"SV",G_GA:"GA",G_SO:"SO"};return map[m]
 function getBestBets(){
   if(!st.props.length)return[];const bets=[];
   for(const p of st.props){const name=p.PLAYER_NAME;if(!name)continue;const metric=p.METRIC;const line=parseFloat(p.DK_LINE);if(isNaN(line))continue;
+    if(metric==="BLK"||metric==="HITS")continue;
     const overO=parseInt(p.OVER_ODDS),underO=parseInt(p.UNDER_ODDS);if(isNaN(overO)&&isNaN(underO))continue;
     const logCol=propToLogCol(metric);const isG=isGoalieProp(metric);
     const hr=getHitRate(name,logCol,line,isG);if(!hr||hr.total<3)continue;
