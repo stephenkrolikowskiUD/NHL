@@ -573,7 +573,7 @@ function render(){
   const sp=curSplits.find(s=>s.player_name===player)||{};
   const hV=toNum(sp[`${metric}_Home`]),aV=toNum(sp[`${metric}_Away`]);
   let haBars=`<div class="no-data">No data</div>`;
-  if(hV>0||aV>0){const mx=Math.max(hV,aV,.1);haBars=[{l:"Home",v:hV,c:"#8b5cf6"},{l:"Away",v:aV,c:"#06b6d4"}].map(b=>`<div class="mini-bar-wrap"><div class="mini-bar" style="height:${Math.max(4,(b.v/mx)*60)}px;background:${b.c}"></div><div class="mini-bar-label">${b.l}</div><div class="mini-bar-val">${b.v.toFixed(2)}/g</div></div>`).join("")}
+  if(hV>0||aV>0){const mx=Math.max(hV,aV,.1);const hGP=toNum(sp.Home_GAMES),aGP=toNum(sp.Away_GAMES);const hTotal=Math.round(hV*hGP),aTotal=Math.round(aV*aGP);haBars=[{l:"Home",v:hV,c:"#8b5cf6",t:hTotal,gp:hGP},{l:"Away",v:aV,c:"#06b6d4",t:aTotal,gp:aGP}].map(b=>`<div class="mini-bar-wrap"><div class="mini-bar" style="height:${Math.max(4,(b.v/mx)*60)}px;background:${b.c}"></div><div class="mini-bar-label">${b.l}</div><div class="mini-bar-val">${b.v.toFixed(2)}/g</div><div class="mini-bar-val" style="color:#22c55e;font-size:7px">${b.t} in ${b.gp}G</div></div>`).join("")}
 
   const lastUp=most.LAST_UPDATED||pT.LAST_UPDATED||"—";
   const earlyBanner=!pHasLogs&&player?`<div class="early-banner"><div class="icon">🌱</div><div class="msg">Early Season — No Game Logs Yet</div><div class="sub">${esc(player)} is rostered. Matchup info and props are available.</div></div>`:"";
