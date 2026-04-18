@@ -442,7 +442,8 @@ function getDueBoard(){
   for(const name of tNames){
     const logs=st.gameLogs.filter(g=>g.player_name===name).sort((a,b)=>(b.game_date||"").localeCompare(a.game_date||""));
     if(logs.length<7)continue;const pT=st.tonight.find(t=>t.player_name===name)||{};const most=pT;
-    for(const stat of stats){const seasAvg=toNum(most[`Seas_${stat}`]),l5Avg=toNum(most[`L5_${stat}`]);if(seasAvg<=0)continue;
+    const MIN_AVG={PTS:0.5,G:0.15,A:0.3,SOG:1.5,BLK:0.5,HITS:1.0,DK_FP:3};
+    for(const stat of stats){const seasAvg=toNum(most[`Seas_${stat}`]),l5Avg=toNum(most[`L5_${stat}`]);if(seasAvg<=(MIN_AVG[stat]||0))continue;
       const coldGap=(seasAvg-l5Avg)/seasAvg;if(coldGap<0.10)continue;
       let drought=0;for(const g of logs){if(toNum(g[stat])<seasAvg)drought++;else break}if(drought<2)continue;
       let matchupScore=0,matchupTags=[];
