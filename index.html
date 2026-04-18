@@ -549,7 +549,7 @@ function render(){
   const lineNum=parseFloat(line)||0;
   const pT=curTonight.find(t=>t.player_name===player)||{};const pHasLogs=hasLogs(player,isG);
   const allLogs=curLogs.filter(g=>g.player_name===player).sort((a,b)=>(b.game_date||"").localeCompare(a.game_date||""));
-  const last10=[...allLogs].reverse().slice(-10);const most=allLogs[0]||{};
+  const last10=[...allLogs].reverse().slice(-10);const most=pT;
   const seasAvg=getRollingVal(most,"Seas_",metric);const l5Avg=getRollingVal(most,"L5_",metric);
   const shortAvg=isG?getRollingVal(most,"L3_",metric):getRollingVal(most,"L5_",metric);
   const lastGame=getMetricVal(most,metric);const shortLbl=isG?"L3":"L5";
