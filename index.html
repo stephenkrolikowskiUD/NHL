@@ -448,7 +448,7 @@ function getDueBoard(){
       const coldGap=(seasAvg-l5Avg)/seasAvg;if(coldGap<0.10)continue;
       let drought=0;for(const g of logs){if(toNum(g[stat])<seasAvg)drought++;else break}if(drought<2)continue;
       let matchupScore=0,matchupTags=[];
-      const oppGA=toNum(pT.OPP_GA_PG);if(oppGA>=3.2){matchupScore+=3;matchupTags.push(`Leaky D (${oppGA.toFixed(1)} GA/G)`)}else if(oppGA>=2.8){matchupScore+=1.5;matchupTags.push(`Avg D (${oppGA.toFixed(1)} GA/G)`)}
+      const oppGA=toNum(pT.OPP_GA_PG);if(oppGA>=3.2){matchupScore+=3;matchupTags.push(`Leaky D (${oppGA.toFixed(1)} GA/G)`)}else if(oppGA>=2.9){matchupScore+=1.5;matchupTags.push(`Avg D (${oppGA.toFixed(1)} GA/G)`)}
       const oppPK=toNum(pT.OPP_PK_PCT);if(oppPK<78){matchupScore+=2;matchupTags.push(`Weak PK (${oppPK.toFixed(0)}%)`)}
       const gt=toNum(pT.GAME_TOTAL);if(gt>=6.5){matchupScore+=2;matchupTags.push(`High O/U: ${gt}`)}
       const prop=st.props.find(pr=>(pr.PLAYER_NAME||"").toLowerCase()===name.toLowerCase()&&pr.METRIC===stat);
