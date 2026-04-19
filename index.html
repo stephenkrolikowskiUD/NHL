@@ -273,7 +273,7 @@ td.push{color:#9ca3af;font-weight:700}
 // 🏒 NHL DFS DASHBOARD — Built on NBA/MLB architecture
 // ══════════════════════════════════════════════════
 const SHEET_ID="1OpER7aRmMFWyxMONdg_LqiyQ47cA3dWRSR8UEQH8FIM";
-const S_METRICS=["G","A","PTS","SOG","BLK","HITS","PPP","TOI","PIM","DK_FP"];
+const S_METRICS=["G","A","PTS","SOG","BLK","HITS","PPP","FOW","TOI","PIM","DK_FP"];
 const G_METRICS=["SV","GA","SV_PCT","W","SO","DK_FP","TOI"];
 
 const COMBO_STATS={"SOG+BLK":["SOG","BLK"],"BLK+HITS":["BLK","HITS"]};
@@ -630,7 +630,8 @@ function render(){
         else picksHTML+=slips.map((s,i)=>{const best=i===0;return`<div class="slip-card ${best?"best":""}"><div class="slip-header"><span class="slip-rank">${best?"⭐ BEST":"#"+(i+1)} · ${st.slipLegs}-LEG</span><span class="slip-score">${s.score.toFixed(1)} pts</span></div><div class="slip-legs">${s.legs.map(l=>`<div class="slip-leg"><span class="slip-leg-team">${esc(l.team)}</span><span class="slip-leg-name">${esc(l.name)}</span><div class="slip-leg-prop"><span class="slip-leg-metric">${l.metric}</span><span class="slip-leg-lean ${l.lean.toLowerCase()}">${l.lean} ${l.dkLine}</span><span class="slip-leg-edge">+${(l.edge*100).toFixed(0)}%</span></div></div>`).join("")}</div>${s.legs.some(l=>l.signals.length)?`<div class="slip-tags">${[...new Set(s.legs.flatMap(l=>l.signals))].slice(0,4).map(sg=>`<span class="slip-tag">${sg}</span>`).join("")}</div>`:""}<div class="slip-meta"><span>Avg edge: +${(s.avgEdge*100).toFixed(1)}%</span><span>Avg hit: ${(s.avgHitRate*100).toFixed(0)}%</span><span>${s.teams.length} teams</span></div></div>`}).join("")}
 
     }else if(st.picksView==="picks"){
-      const todayPicks=st.picks.filter(p=>{const d=p.DATE||p.date||"";return d===new Date().toISOString().slice(0,10)});
+      const latestDate=st.picks.reduce((max,p)=>{const d=p.DATE||p.date||"";return d>max?d:max},"");
+    const todayPicks=st.picks.filter(p=>(p.DATE||p.date||"")===latestDate);
       if(!todayPicks.length)picksHTML=subTabs+`<div class="no-data" style="padding:40px;text-align:center">No AI picks today.</div>`;
       else{const smash=todayPicks.filter(p=>(p.confidence||"").toUpperCase()==="SMASH").length;const hits=todayPicks.filter(p=>{const h=(p.HIT||"").toString().toUpperCase();return h==="YES"||h==="TRUE"}).length;const miss=todayPicks.filter(p=>{const h=(p.HIT||"").toString().toUpperCase();return h==="NO"||h==="FALSE"}).length;const tracked=hits+miss;
         picksHTML=subTabs+`<div class="picks-summary"><div class="ps-card"><div class="ps-val">${todayPicks.length}</div><div class="ps-lbl">PICKS</div></div><div class="ps-card"><div class="ps-val">${smash}</div><div class="ps-lbl">SMASH</div></div>${tracked?`<div class="ps-card"><div class="ps-val" style="color:${hits>=miss?"#22c55e":"#ef4444"}">${hits}-${miss}</div><div class="ps-lbl">RECORD</div></div>`:`<div class="ps-card"><div class="ps-val" style="color:#64748b">—</div><div class="ps-lbl">RECORD</div></div>`}</div><div class="cards-grid">`;
