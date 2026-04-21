@@ -917,6 +917,7 @@ function render(){
       <button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">📊 Dash</button>
       <button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">📋 Log</button>
       <button class="tab-btn ${activeTab==="picks"?"active":""}" onclick="switchTab('picks')">🎯 Picks</button>
+      <button class="tab-btn ${activeTab==="method"?"active":""}" onclick="switchTab('method')">ℹ️ Info</button>
     </div>
     ${showCtrl?`<div class="header-controls">
       <div class="mode-toggle">
@@ -954,10 +955,23 @@ function render(){
   </div>
   <div class="page ${activeTab==="gamelog"?"active":""}">${logHTML}</div>
   <div class="page ${activeTab==="picks"?"active":""}">${picksHTML}</div>
+  <div class="page ${activeTab==="method"?"active":""}">
+    <div style="padding:16px"><div style="text-align:center;margin-bottom:16px"><div style="font-size:28px;margin-bottom:4px">🏒</div><div style="color:#38bdf8;font-weight:800;font-size:16px">How This Dashboard Works</div><div style="color:#93c5fd;font-size:11px;margin-top:4px">Under the hood of the NHL DFS Engine</div></div>
+      <div class="card" style="margin-bottom:10px"><div class="card-title">📡 Data Sources</div><div style="font-size:12px;color:#d1d5db;line-height:1.6"><div style="margin-bottom:6px"><span style="color:#38bdf8;font-weight:700">NHL API</span> — Skater/goalie game logs, team stats, tonight's schedule.</div><div style="margin-bottom:6px"><span style="color:#38bdf8;font-weight:700">The Odds API</span> — Live spreads, totals, and player props.</div><div><span style="color:#38bdf8;font-weight:700">Google Sheets</span> — Central warehouse. Engine writes 8+ tabs; app reads live.</div></div></div>
+      <div class="card" style="margin-bottom:10px"><div class="card-title">⚙️ Calculations</div><div style="font-size:12px;color:#d1d5db;line-height:1.6"><span style="color:#38bdf8;font-weight:700">Rolling Averages</span> L3/L5/Season · <span style="color:#38bdf8;font-weight:700">Splits</span> Home/Away · <span style="color:#38bdf8;font-weight:700">BLK/HITS</span> from boxscores · <span style="color:#38bdf8;font-weight:700">EV%</span> hit rate vs implied odds · <span style="color:#38bdf8;font-weight:700">Line Movement</span> snapshot diffs</div></div>
+      <div class="card" style="margin-bottom:10px"><div class="card-title">🤖 AI Picks — Gemini</div><div style="font-size:12px;color:#d1d5db;line-height:1.6">Gemini 2.5 Flash Lite receives 46 skaters with stats + DK lines. Props-only filter. Returns 12 ranked picks with SMASH/STRONG/LEAN.</div></div>
+      <div class="card" style="margin-bottom:10px"><div class="card-title">💰 Best Bets & 🎫 Slips</div><div style="font-size:12px;color:#d1d5db;line-height:1.6">EV engine compares hit rates to implied odds. Slips combine EV + AI + streaks into conviction-scored parlays.</div></div>
+      <div class="card" style="margin-bottom:10px"><div class="card-title">🧊 They're Due</div><div style="font-size:12px;color:#d1d5db;line-height:1.6">Finds cold skaters with strong season averages and favorable matchups tonight. Regression to the mean + soft goaltending = buy low.</div></div>
+      <div class="card" style="margin-bottom:10px"><div class="card-title">📖 Abbreviations</div><div style="font-size:12px;color:#d1d5db;line-height:1.7">G — Goals · A — Assists · PTS — Points · SOG — Shots on Goal<br>BLK — Blocked Shots · HITS — Hits · PPP — Power Play Points<br>TOI — Time on Ice · PIM — Penalty Minutes · +/- — Plus/Minus<br>SV — Saves · GA — Goals Against · SV% — Save Percentage<br>DK_FP — DraftKings Fantasy Points · UD_FP — Underdog Fantasy Points<br>EV% — Expected Value (hit rate minus implied odds)<br>SMASH/STRONG/LEAN — AI confidence tiers<br>L3/L5 — Last 3/5 game averages · Seas — Season average<br>PK% — Penalty Kill Percentage · GA/G — Goals Against per Game<br>O/U — Over/Under (game total) · ML — Moneyline</div></div>
+      <div class="card" style="margin-bottom:10px;border:1px solid #1e3a5f"><div class="card-title">🙏 Credits</div><div style="font-size:12px;color:#d1d5db;line-height:1.6"><div>Built by <span style="color:#38bdf8;font-weight:700">Stephen Krolikowski</span></div><div>AI: <span style="color:#38bdf8;font-weight:700">Gemini 2.5 Flash Lite</span> · App: <span style="color:#38bdf8;font-weight:700">Claude</span> by Anthropic</div><div>Engine + dashboard fixes with <span style="color:#38bdf8;font-weight:700">Codex</span> by OpenAI</div><div>Props: <span style="color:#38bdf8;font-weight:700">The Odds API</span> · Data: <span style="color:#38bdf8;font-weight:700">NHL API</span> (api-web.nhle.com)</div></div></div>
+      <div style="text-align:center;color:#555;font-size:9px;padding:8px 0 20px">For entertainment & research purposes only.</div>
+    </div>
+  </div>
   <div class="tab-bar">
     <button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">📊 Dash</button>
     <button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">📋 Log</button>
     <button class="tab-btn ${activeTab==="picks"?"active":""}" onclick="switchTab('picks')">🎯 Picks</button>
+    <button class="tab-btn ${activeTab==="method"?"active":""}" onclick="switchTab('method')">ℹ️ Info</button>
   </div>`;
 
   document.getElementById("metricSel")?.addEventListener("change",e=>{st.metric=e.target.value;render()});
