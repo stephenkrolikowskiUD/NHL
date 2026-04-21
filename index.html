@@ -485,7 +485,7 @@ function getHitRate(name,metric,line,isG){
   };
 }
 function isGoalieProp(m){return["SV","GA","SV_PCT","G_SO","G_W"].includes(m)||(m||"").startsWith("G_")}
-function propToLogCol(m){const map={G_SV:"SV",G_GA:"GA",G_SO:"SO"};return map[m]||m}
+function propToLogCol(m){const map={G_SV:"SV",G_GA:"GA",G_SO:"SO",G_W:"W"};return map[m]||m}
 function getBestBets(){
   return getMemo("bestBets",()=>{if(!st.props.length)return[];const bets=[];
   for(const p of st.props){const name=p.PLAYER_NAME;if(!name)continue;const metric=p.METRIC;const line=parseFloat(p.DK_LINE);if(isNaN(line))continue;
@@ -500,13 +500,13 @@ function getBestBets(){
     else if(oE!==null){lean="OVER";edge=oE;odds=overO;ip=oIP;hitRate=hr.overRate}else{lean="UNDER";edge=uE;odds=underO;ip=uIP;hitRate=hr.underRate}
     if(edge===null)continue;
     const pT=getTonightPlayerRow(name,false)||getTonightPlayerRow(name,true)||{};
-    bets.push({name,metric,line,lean,edge,odds,impliedProb:ip,hitRate,hits:lean==="OVER"?hr.over:hr.under,total:hr.nonPush,team:pT.team_abbr||"",opp:pT.opp_abbr_tonight||"",goalie:pT.opp_goalie_name||"",goalieStatus:pT.opp_goalie_status||"",starterStatus:pT.starter_status||"",moneyline:pT.MONEYLINE||"",gameTotal:pT.GAME_TOTAL||"",impliedTotal:pT.IMPLIED_TOTAL||"",dkLine:p.DK_LINE,overOdds:p.OVER_ODDS,underOdds:p.UNDER_ODDS,isG});
+    bets.push({name,metric,line,lean,edge,odds,impliedProb:ip,hitRate,hits:lean==="OVER"?hr.over:hr.under,total:hr.nonPush,team:pT.team_abbr||"",opp:pT.opp_abbr_tonight||"",goalie:pT.opp_goalie_name||"",goalieStatus:pT.opp_goalie_status||"",starterStatus:pT.starter_status||"",moneyline:pT.MONEYLINE||"",gameTotal:pT.GAME_TOTAL||"",impliedTotal:pT.IMPLIED_TOTAL||"",dkLine:p.DK_LINE,overOdds:p.OVER_ODDS,underOdds:p.UNDER_ODDS,isG,teamSlot:`${pT.team_abbr||""}${isG?":G":":S"}`});
   }bets.sort((a,b)=>b.edge-a.edge);return bets;});
 }
 
 // ═══ SMART SLIPS ═══
 function getConvictionLegs(){
-  const SLIP_WORTHY=new Set(["PTS","G","A","SOG","BLK","PPP","SV","UD_FP"]);
+  const SLIP_WORTHY=new Set(["PTS","G","A","SOG","BLK","PPP","SV","GA","G_W","UD_FP"]);
   const bets=getBestBets().filter(b=>b.edge>0).filter(b=>{
     if(!SLIP_WORTHY.has(b.metric))return false;
     if(b.lean==="UNDER"&&parseFloat(b.dkLine)<=0.5)return false;
@@ -525,14 +525,14 @@ function getConvictionLegs(){
     if(aiConflictLevel==="strong")signals.push("⚠️ AI conflict");else if(aiConflictLevel==="soft")signals.push("⚠️ AI cross-check");
     if(sk)signals.push(`🔥 ${sk.streak}G`);if(b.edge>=0.15)signals.push("💎 Elite");else if(b.edge>=0.08)signals.push("📈 Strong");
     if(b.hitRate>=0.8)signals.push(`✅ ${(b.hitRate*100).toFixed(0)}%`);
-    legs.push({...b,conviction,signals,hasAI:aiAgrees,hasAIConflict:!!aiConflictLevel,aiConflictLevel,aiDisagreementText,hasStreak:!!sk});
+    legs.push({...b,conviction,signals,hasAI:aiAgrees,hasAIConflict:!!aiConflictLevel,aiConflictLevel,aiDisagreementText,hasStreak:!!sk,teamSlot:b.teamSlot||`${b.team}${b.isG?":G":":S"}`});
   }legs.sort((a,b)=>b.conviction-a.conviction);return legs;
 }
 function generateSlips(legs,n){
   if(legs.length<n)return[];const slips=[];const maxIter=n<=3?500:300;
   const seen=new Set();const dedupedLegs=legs.filter(l=>{const k=l.name.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});const pool=dedupedLegs.slice(0,n<=3?15:n<=4?18:20);
-  function gen(s,cur,used,tc){if(cur.length===n){const sc=cur.reduce((s,l)=>s+l.conviction,0);slips.push({legs:cur.slice(),score:sc,avgEdge:cur.reduce((s,l)=>s+l.edge,0)/n,avgHitRate:cur.reduce((s,l)=>s+l.hitRate,0)/n,teams:[...new Set(cur.map(l=>l.team))]});return}
-    for(let i=s;i<pool.length&&slips.length<maxIter;i++){const l=pool[i];if(used.has(l.name))continue;const t=tc.get(l.team)||0;if(t>=2)continue;used.add(l.name);tc.set(l.team,t+1);cur.push(l);gen(i+1,cur,used,tc);cur.pop();used.delete(l.name);tc.set(l.team,t)}}
+  function gen(s,cur,used,tc){if(cur.length===n){const sc=cur.reduce((s,l)=>s+l.conviction,0);slips.push({legs:cur.slice(),score:sc,avgEdge:cur.reduce((s,l)=>s+l.edge,0)/n,avgHitRate:cur.reduce((s,l)=>s+l.hitRate,0)/n,teams:[...new Set(cur.map(l=>l.teamSlot||l.team))]});return}
+    for(let i=s;i<pool.length&&slips.length<maxIter;i++){const l=pool[i];if(used.has(l.name))continue;const slot=l.teamSlot||l.team;const t=tc.get(slot)||0;if(t>=2)continue;used.add(l.name);tc.set(slot,t+1);cur.push(l);gen(i+1,cur,used,tc);cur.pop();used.delete(l.name);tc.set(slot,t)}}
   gen(0,[],new Set(),new Map());slips.sort((a,b)=>b.score-a.score);
   const MAX_SLIPS=8;let selected=[];
   for(let cap=2;cap<=MAX_SLIPS;cap++){
@@ -874,7 +874,7 @@ function render(){
         picksHTML+=posEV.slice(0,40).map(b=>{const ep=(b.edge*100).toFixed(1),hr=(b.hitRate*100).toFixed(0),ip=(b.impliedProb*100).toFixed(0);const cls=b.edge>=0.15?"elite":b.edge>=0.08?"strong":"mid";
           const matchupMeta=b.isG?`${esc(b.team)} vs ${esc(b.opp)}${b.starterStatus?` · ${esc(b.starterStatus)}`:""}`:`${esc(b.team)} vs ${esc(b.opp)} · vs ${esc(b.goalie||"TBD")}${b.goalieStatus?` (${esc(b.goalieStatus)})`:""}`;
           const vegasMeta=[b.moneyline?`ML ${b.moneyline}`:"",b.impliedTotal?`ITT ${b.impliedTotal}`:"",`${b.hits}/${b.total} games`].filter(Boolean).join(" · ");
-          return`<div class="bet-card ${cls}" style="cursor:pointer;border-color:${b.lean==="OVER"?"#22c55e":"#ef4444"}" onclick="streakToDash('${esc(b.name)}')"><div class="bet-left"><div class="bet-name">${esc(b.name)}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta}</div><div class="bet-prop"><span class="prop-metric" style="font-size:10px">${b.metric}</span><span class="${b.lean==="OVER"?"prop-over":"prop-under"}" style="font-weight:700;font-size:13px">${b.lean} ${b.dkLine}</span><span style="color:#7dd3fc;font-size:11px">${fmtOdds(b.odds)}</span><span class="ev-badge ev-pos ev-big">+${ep}% EV</span></div><div class="bet-bar"><div class="bet-bar-fill" style="width:${hr}%;background:${b.edge>=0.15?"#ef4444":b.edge>=0.08?"#22c55e":"#f59726"}"></div></div><div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:#64748b"><span>You: ${hr}%</span><span>DK: ${ip}%</span></div></div><div class="bet-right"><div class="bet-edge pos">+${ep}%</div><div class="bet-sub">edge</div></div></div>`}).join("")+`</div>`}
+          return`<div class="bet-card ${cls}" style="cursor:pointer;border-color:${b.lean==="OVER"?"#22c55e":"#ef4444"}" onclick="streakToDash('${esc(b.name)}')"><div class="bet-left"><div class="bet-name">${b.isG?`🥅 `:""}${esc(b.name)}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta}</div><div class="bet-prop"><span class="prop-metric" style="font-size:10px">${b.metric}</span><span class="${b.lean==="OVER"?"prop-over":"prop-under"}" style="font-weight:700;font-size:13px">${b.lean} ${b.dkLine}</span><span style="color:#7dd3fc;font-size:11px">${fmtOdds(b.odds)}</span><span class="ev-badge ev-pos ev-big">+${ep}% EV</span></div><div class="bet-bar"><div class="bet-bar-fill" style="width:${hr}%;background:${b.edge>=0.15?"#ef4444":b.edge>=0.08?"#22c55e":"#f59726"}"></div></div><div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:#64748b"><span>You: ${hr}%</span><span>DK: ${ip}%</span></div></div><div class="bet-right"><div class="bet-edge pos">+${ep}%</div><div class="bet-sub">edge</div></div></div>`}).join("")+`</div>`}
 
     }else if(st.picksView==="slips"){
       const r=getSmartSlips();picksHTML=picksIntro;
@@ -883,7 +883,7 @@ function render(){
         picksHTML+=`<div class="bet-summary"><div class="bs-card"><div class="bs-val">${r.legs.length}</div><div class="bs-lbl">ELIGIBLE</div></div><div class="bs-card"><div class="bs-val" style="color:#38bdf8">${r.legs.filter(l=>l.hasAI).length}</div><div class="bs-lbl">AI-BACKED</div></div><div class="bs-card"><div class="bs-val" style="color:#ffaa00">${r.legs.filter(l=>l.hasStreak).length}</div><div class="bs-lbl">ON STREAKS</div></div><div class="bs-card"><div class="bs-val" style="color:#fda4af">${r.legs.filter(l=>l.hasAIConflict).length}</div><div class="bs-lbl">AI CONFLICTS</div></div><div class="bs-card"><div class="bs-val" style="color:#7dd3fc">${pay[st.slipLegs]}</div><div class="bs-lbl">PAYOUT</div></div></div>`;
         picksHTML+=`<div class="slip-controls"><span style="color:#64748b;font-size:11px">Legs:</span><div class="pf-btn ${st.slipLegs==="3"?"active":""}" onclick="setSlipLegs('3')">3-Leg</div><div class="pf-btn ${st.slipLegs==="4"?"active":""}" onclick="setSlipLegs('4')">4-Leg</div><div class="pf-btn ${st.slipLegs==="5"?"active":""}" onclick="setSlipLegs('5')">5-Leg</div></div>`;
         if(!slips.length)picksHTML+=`<div class="no-data" style="padding:20px;text-align:center">Not enough legs.</div>`;
-        else picksHTML+=slips.map((s,i)=>{const best=i===0;return`<div class="slip-card ${best?"best":""}"><div class="slip-header"><span class="slip-rank">${best?"⭐ BEST":"#"+(i+1)} · ${st.slipLegs}-LEG</span><span class="slip-score">${s.score.toFixed(1)} pts</span></div><div class="slip-legs">${s.legs.map(l=>`<div class="slip-leg"><span class="slip-leg-team">${esc(l.team)}</span><div style="flex:1;min-width:0"><span class="slip-leg-name">${esc(l.name)}</span>${l.aiDisagreementText?`<div style="font-size:9px;color:${l.aiConflictLevel==="strong"?"#fda4af":"#fde68a"};margin-top:2px">${esc(l.aiDisagreementText)}</div>`:""}</div><div class="slip-leg-prop"><span class="slip-leg-metric">${l.metric}</span><span class="slip-leg-lean ${l.lean.toLowerCase()}">${l.lean} ${l.dkLine}</span><span class="slip-leg-edge">+${(l.edge*100).toFixed(0)}%</span></div></div>`).join("")}</div>${s.legs.some(l=>l.signals.length)?`<div class="slip-tags">${[...new Set(s.legs.flatMap(l=>l.signals))].slice(0,4).map(sg=>`<span class="slip-tag">${sg}</span>`).join("")}</div>`:""}<div class="slip-meta"><span>Avg edge: +${(s.avgEdge*100).toFixed(1)}%</span><span>Avg hit: ${(s.avgHitRate*100).toFixed(0)}%</span><span>${s.teams.length} teams</span></div></div>`}).join("")}
+        else picksHTML+=slips.map((s,i)=>{const best=i===0;return`<div class="slip-card ${best?"best":""}"><div class="slip-header"><span class="slip-rank">${best?"⭐ BEST":"#"+(i+1)} · ${st.slipLegs}-LEG</span><span class="slip-score">${s.score.toFixed(1)} pts</span></div><div class="slip-legs">${s.legs.map(l=>`<div class="slip-leg"><span class="slip-leg-team">${esc(l.team)}</span><div style="flex:1;min-width:0"><span class="slip-leg-name">${l.isG?`🥅 `:""}${esc(l.name)}</span>${l.aiDisagreementText?`<div style="font-size:9px;color:${l.aiConflictLevel==="strong"?"#fda4af":"#fde68a"};margin-top:2px">${esc(l.aiDisagreementText)}</div>`:""}</div><div class="slip-leg-prop"><span class="slip-leg-metric">${l.metric}</span><span class="slip-leg-lean ${l.lean.toLowerCase()}">${l.lean} ${l.dkLine}</span><span class="slip-leg-edge">+${(l.edge*100).toFixed(0)}%</span></div></div>`).join("")}</div>${s.legs.some(l=>l.signals.length)?`<div class="slip-tags">${[...new Set(s.legs.flatMap(l=>l.signals))].slice(0,4).map(sg=>`<span class="slip-tag">${sg}</span>`).join("")}</div>`:""}<div class="slip-meta"><span>Avg edge: +${(s.avgEdge*100).toFixed(1)}%</span><span>Avg hit: ${(s.avgHitRate*100).toFixed(0)}%</span><span>${s.teams.length} teams</span></div></div>`}).join("")}
 
     }else if(st.picksView==="picks"){
       const latestDate=getLatestPickDate();
