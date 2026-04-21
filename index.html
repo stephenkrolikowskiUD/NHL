@@ -735,6 +735,61 @@ function getDraftBoard(){
   board.sort((a,b)=>parseFloat(b.projUD)-parseFloat(a.projUD));return board;});
 }
 
+function getDraftStacks(){
+  return getMemo("draftStacks",()=>{
+    const board=getDraftBoard().filter(p=>!p.isGoalie);
+    const byName=new Map(board.map(p=>[normalizePlayerName(p.name),p]));
+    const byTeamGame=new Map();
+    for(const row of st.tonight||[]){
+      const key=normalizePlayerName(row.player_name);
+      if(!key||!byName.has(key))continue;
+      const team=row.team_abbr||"";
+      const opp=row.opp_abbr_tonight||"";
+      const gameKey=[team,opp].sort().join("|");
+      if(!byTeamGame.has(team))byTeamGame.set(team,[]);
+      byTeamGame.get(team).push({...row,__gameKey:gameKey});
+    }
+    const seen=new Set();const pairs=[];
+    for(const [team,rows] of byTeamGame.entries()){
+      for(let i=0;i<rows.length;i++){
+        for(let j=i+1;j<rows.length;j++){
+          const ra=rows[i],rb=rows[j];
+          const a=byName.get(normalizePlayerName(ra.player_name));
+          const b=byName.get(normalizePlayerName(rb.player_name));
+          if(!a||!b)continue;
+          const key=[normalizePlayerName(a.name),normalizePlayerName(b.name)].sort().join("|");
+          if(seen.has(key))continue;
+          seen.add(key);
+          const gameTotal=Math.max(toNum(ra.GAME_TOTAL),toNum(rb.GAME_TOTAL));
+          const oppGA=Math.max(toNum(ra.OPP_GA_PG),toNum(rb.OPP_GA_PG));
+          const proj=toNum(a.projUD)+toNum(b.projUD);
+          const score=proj+(gameTotal>=6?4:0)+(oppGA>=3.2?4:oppGA>=2.9?2:0)+(toNum(a.sPPP)>=0.5&&toNum(b.sPPP)>=0.5?2:0);
+          const tags=[];
+          if(gameTotal>=6)tags.push("⚡ HIGH TOTAL");
+          if(oppGA>=3.0)tags.push("🎯 STACK TARGET");
+          tags.push("🔗 CORRELATED");
+          pairs.push({players:[a,b],score,combinedProj:proj.toFixed(1),team,opp:a.opp,goalie:ra.opp_goalie_name||"TBD",gameTotal,oppGA,tags});
+        }
+      }
+    }
+    return pairs.sort((a,b)=>b.score-a.score).slice(0,10);
+  });
+}
+
+function getDraftStackTagMap(){
+  return getMemo("draftStackTags",()=>{
+    const map=new Map();
+    getDraftStacks().forEach(stack=>{
+      stack.players.forEach(p=>{
+        const key=normalizePlayerName(p.name);
+        if(!map.has(key))map.set(key,new Set());
+        stack.tags.forEach(tag=>map.get(key).add(tag));
+      });
+    });
+    return map;
+  });
+}
+
 // ═══ MAIN RENDER ═══
 function render(){
   const focus=saveFocus();const app=document.getElementById("app");
@@ -880,7 +935,7 @@ function render(){
         if(combos3.length)picksHTML+=`<div style="padding:12px 16px 0"><div style="color:#38bdf8;font-size:12px;font-weight:700;margin-bottom:8px">🎰 Best 3-Leg ${pStat} Parlays</div><div class="cards-grid">${combos3.map((c,i)=>{const matchupMeta=c.players.map(p=>p.isG?`${esc(p.team)}-${esc(p.opp)}${p.starterStatus?` ${esc(p.starterStatus)}`:""}`:`${esc(p.team)}-${esc(p.opp)} vs ${esc(p.goalie||"TBD")}${p.goalieStatus?` (${esc(p.goalieStatus)})`:""}`).join(" · ");const vegasMeta=c.players.map(p=>[p.moneyline?`${esc(p.team)} ML ${p.moneyline}`:"",p.impliedTotal?`${esc(p.team)} ITT ${p.impliedTotal}`:""].filter(Boolean).join(" · ")).filter(Boolean).join(" · ");return`<div class="bet-card ${i===0?"elite":"mid"}" style="cursor:default"><div class="bet-left"><div class="bet-name">${c.players.map(p=>esc(p.name)).join(" + ")}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta||`${c.teams.join(" · ")} · Avg edge: ${c.avgEdge>0?"+":""}${(c.avgEdge*100).toFixed(0)}%`}</div></div><div class="bet-right"><div class="bet-edge pos">${(c.avgHitRate*100).toFixed(0)}%</div><div class="bet-sub">avg hit</div></div></div>`}).join("")}</div></div>`}
 
     }else if(st.picksView==="draft"){
-      const board=getDraftBoard();const avail=board.filter(p=>!st.drafted.has(p.name));
+      const board=getDraftBoard();const avail=board.filter(p=>!st.drafted.has(p.name));const stacks=getDraftStacks().slice(0,5);const stackTags=getDraftStackTagMap();
       function getTier(proj,isGoalie){const v=parseFloat(proj);if(isGoalie){if(v>=20)return{label:"TIER 1 — Elite",cls:"tier1",color:"#38bdf8"};if(v>=10)return{label:"TIER 2 — Solid",cls:"tier2",color:"#3b82f6"};return{label:"TIER 3 — Backup",cls:"tier3",color:"#8b5cf6"}}if(v>=8)return{label:"TIER 1 — Elite",cls:"tier1",color:"#38bdf8"};if(v>=5)return{label:"TIER 2 — Strong",cls:"tier2",color:"#3b82f6"};if(v>=3)return{label:"TIER 3 — Solid",cls:"tier3",color:"#8b5cf6"};return{label:"TIER 4 — Depth",cls:"",color:"#64748b"}}
       function getPosClass(pos){if(pos==="G")return"draft-pos-g";if(pos==="C")return"draft-pos-c";if(pos==="D")return"draft-pos-d";return"draft-pos-w"}
       picksHTML=picksIntro+`<div style="padding:12px 16px 4px;color:#38bdf8;font-size:13px;font-weight:700">🏒 Draft Cheat Sheet</div><div style="padding:0 16px 4px;color:#64748b;font-size:10px">Tap to mark as drafted.</div><div class="draft-controls"><button class="draft-reset" onclick="resetDrafted()">Reset</button><div class="draft-count">${st.drafted.size} drafted · ${avail.length} left</div></div><div class="cards-grid">`;
@@ -888,9 +943,15 @@ function render(){
         let tags=[];if(p.isSmash)tags.push(`<span class="draft-tag" style="background:#22c55e22;color:#22c55e">SMASH</span>`);
         if(!p.isGoalie){if(p.sPPP>=0.5)tags.push(`<span class="draft-tag" style="background:#f5972622;color:#f59726">⚡ PP</span>`);if(p.sSOG>=3)tags.push(`<span class="draft-tag" style="background:#ef444422;color:#ef4444">🎯 SHOTS</span>`)}
         const l5v=parseFloat(p.l5UD),projv=parseFloat(p.projUD);if(l5v>projv*1.15)tags.push(`<span class="draft-tag" style="background:#22c55e22;color:#22c55e">📈 HOT</span>`);
+        (stackTags.get(normalizePlayerName(p.name))||new Set()).forEach(tag=>{const clr=tag.includes("CORRELATED")?"#60a5fa":tag.includes("HIGH TOTAL")?"#fbbf24":"#34d399";tags.push(`<span class="draft-tag" style="background:${clr}22;color:${clr}">${tag}</span>`);});
         const meta=p.isGoalie?`${esc(p.team)} vs ${esc(p.opp)}`:`${esc(p.team)} vs ${esc(p.opp)} · vs ${esc(p.goalie)}${p.goalieStatus?` (${esc(p.goalieStatus)})`:""}`;
         picksHTML+=`${tc?`<div class="draft-tier-label" style="color:${tier.color}">${tier.label}</div>`:""}<div class="draft-card${d?" drafted":""}${p.isSmash&&!d?" smash":!d?" "+tier.cls:""}${p.pos==="G"&&!d?" goalie":""}" onclick="toggleDrafted('${esc(p.name)}')"><div class="draft-rank" style="color:${d?"#1e3a5f":tier.color}">${i+1}</div><div class="draft-main"><div class="draft-name">${esc(p.name)}<span class="draft-pos ${getPosClass(p.pos)}">${p.pos}</span></div><div class="draft-meta">${meta}</div>${tags.length?`<div class="draft-tags">${tags.join("")}</div>`:""}</div><div class="draft-fp"><div class="draft-fp-val" style="color:${d?"#1e3a5f":tier.color}">${p.projUD}</div><div class="draft-fp-lbl">UD FP</div>${l5v!==projv?`<div style="font-size:9px;color:${l5v>projv?"#22c55e":"#ef4444"};margin-top:1px">L5: ${p.l5UD}</div>`:""}</div></div>`});
       picksHTML+=`</div>`;
+      if(stacks.length){
+        picksHTML+=`<div style="padding:14px 16px 4px;color:#38bdf8;font-size:12px;font-weight:700">⚡ Stacks</div><div style="padding:0 16px 6px;color:#64748b;font-size:10px">Top 2-player skater stacks ranked by combined UD projection, game total, and opposing-goalie weakness.</div><div class="cards-grid">`;
+        picksHTML+=stacks.map((s,i)=>`<div class="bet-card ${i===0?"elite":"mid"}" style="cursor:default"><div class="bet-left"><div class="bet-name">${esc(s.players[0].name)} + ${esc(s.players[1].name)}</div><div class="bet-meta">${esc(s.team)} vs ${esc(s.opp)} · vs ${esc(s.goalie)}${s.gameTotal?` · O/U ${s.gameTotal}`:""}${s.oppGA?` · ${s.oppGA.toFixed(1)} GA/G`:""}</div><div class="draft-tags" style="margin-top:6px">${s.tags.map(tag=>`<span class="draft-tag" style="background:${tag.includes("CORRELATED")?"#60a5fa22":tag.includes("HIGH TOTAL")?"#fbbf2422":"#34d39922"};color:${tag.includes("CORRELATED")?"#60a5fa":tag.includes("HIGH TOTAL")?"#fbbf24":"#34d399"}">${tag}</span>`).join("")}</div></div><div class="bet-right"><div class="bet-edge pos">${s.combinedProj}</div><div class="bet-sub">UD FP</div></div></div>`).join("");
+        picksHTML+=`</div>`;
+      }
 
     }else{
       // Props table
