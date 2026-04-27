@@ -15,6 +15,8 @@ input::placeholder{color:#64748b}
 .header-title{color:#38bdf8;font-weight:700;font-size:13px;margin-bottom:8px}
 .refresh-btn{background:#0f2038;border:1px solid #1e3a5f;color:#dbeafe;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;transition:.18s}
 .refresh-btn:hover{background:#16304f}
+.theme-btn{background:#0f2038;border:1px solid #1e3a5f;color:#dbeafe;border-radius:8px;padding:6px 10px;font-size:11px;font-weight:700;cursor:pointer;transition:.18s}
+.theme-btn:hover{background:#16304f}
 .player-link{color:inherit;text-decoration:underline dotted rgba(255,255,255,.35);cursor:pointer}
 .player-link:hover{opacity:.85}
 .risk-badge{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;margin-left:6px}
@@ -23,6 +25,9 @@ input::placeholder{color:#64748b}
 .risk-subnote{font-size:10px;color:#fbbf24;margin-top:4px;font-weight:600}
 .muted-risk{opacity:.55}
 .props-returning td{opacity:.6}
+.locked-badge{display:inline-block;font-size:9px;font-weight:700;padding:2px 6px;border-radius:6px;margin-left:6px;background:#47556922;color:#cbd5e1;border:1px solid #64748b55}
+.locked-card{opacity:.5;filter:saturate(.7)}
+.props-locked td{opacity:.45}
 .row{display:flex;gap:8px;margin-top:8px}.row select,.row input{flex:1}
 .section{padding:14px 16px 0}
 .label{color:#7dd3fc;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px}
@@ -65,6 +70,16 @@ input::placeholder{color:#64748b}
 @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-12px)}}
 .error{padding:24px;color:#ef4444;font-size:14px}
 .no-data{color:#64748b;font-size:11px}
+body.light-theme{background:#f4f8ff;color:#111827}
+body.light-theme .header,body.light-theme .stats-strip,body.light-theme .card,body.light-theme .avg-card,body.light-theme .split-card,body.light-theme .matchup-card,body.light-theme .tab-bar,body.light-theme th{background:#ffffff;color:#111827;border-color:#d7e3f4}
+body.light-theme select,body.light-theme input{background:#ffffff;color:#111827;border-color:#c7d7ec}
+body.light-theme input::placeholder{color:#94a3b8}
+body.light-theme .header-title,body.light-theme .card-title,body.light-theme th,body.light-theme .tab-btn.active,body.light-theme .top-nav .tab-btn.active{color:#0369a1}
+body.light-theme .refresh-btn,body.light-theme .theme-btn,body.light-theme .sub-tab,body.light-theme .pf-btn,body.light-theme .mode-btn{background:#ffffff;color:#475569;border-color:#c7d7ec}
+body.light-theme td{color:#111827;border-color:#e4ecf7}
+body.light-theme .bet-card,body.light-theme .pick-card,body.light-theme .slip-card,body.light-theme .streak-card,body.light-theme .draft-card,body.light-theme .due-card,.light-theme .prop-card{background:#ffffff;box-shadow:0 1px 2px rgba(15,23,42,.06)}
+body.light-theme .tab-bar{border-top-color:#d7e3f4}
+body.light-theme .props-returning td,body.light-theme .muted-risk{opacity:.6}
 .early-banner{background:#0f2038;border:1px solid #1e3a5f;border-radius:10px;padding:14px;margin:14px 16px 0;text-align:center}
 .early-banner .icon{font-size:20px;margin-bottom:4px}
 .early-banner .msg{color:#7dd3fc;font-size:12px;font-weight:600}
@@ -234,6 +249,13 @@ td.push{color:#9ca3af;font-weight:700}
 /* ═══ Scrollbars ═══ */
 ::-webkit-scrollbar{width:8px;height:8px}::-webkit-scrollbar-track{background:#0a1628}::-webkit-scrollbar-thumb{background:#1e3a5f;border-radius:4px}
 *{scrollbar-width:thin;scrollbar-color:#1e3a5f #0a1628}
+@media(max-width:767px){
+  .risk-badge{display:inline-flex;align-items:center;justify-content:center;margin-left:0;padding:3px 7px;font-size:8px;line-height:1.1;white-space:nowrap}
+  .bet-name,.pick-player,.draft-name,.due-name,.ai-pick-player{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+  .risk-subnote{font-size:9px;line-height:1.35}
+  .muted-risk{opacity:.45}
+  .props-returning td{opacity:.5}
+}
 /* ═══ TABLET+ ═══ */
 @media(min-width:768px){
   body{max-width:1400px;padding-bottom:0}.tab-bar{display:none}
@@ -299,8 +321,10 @@ let st={
   activeTab:"dashboard",oppFilter:"",
   picksView:"bets",propsMetric:"ALL",propsSearch:"",
   streakFilter:"all",dueFilter:"all",drafted:new Set(),slipLegs:"3",parlayStat:"PTS",
-  loading:true,error:null,loadedAt:null,latestPickDate:"",pickGuard:null,dataVersion:0
+  loading:true,error:null,loadedAt:null,latestPickDate:"",pickGuard:null,dataVersion:0,theme:(localStorage.getItem("nhl-dashboard-theme")||"dark")
 };
+function applyTheme(){document.body.classList.toggle("light-theme",st.theme==="light")}
+function toggleTheme(){st.theme=st.theme==="light"?"dark":"light";localStorage.setItem("nhl-dashboard-theme",st.theme);applyTheme();render()}
 let derived={
   version:-1,
   skaterLogsByName:new Map(),
@@ -384,6 +408,26 @@ function normalizeDate(val){
   if(!Number.isNaN(parsed.getTime()))return`${parsed.getFullYear()}-${String(parsed.getMonth()+1).padStart(2,"0")}-${String(parsed.getDate()).padStart(2,"0")}`;
   return s;
 }
+function fmtNowEastern(){
+  return new Date().toLocaleString("en-US",{timeZone:"America/New_York",month:"2-digit",day:"2-digit",year:"numeric",hour:"numeric",minute:"2-digit",hour12:true}).replace(",","") + " EST";
+}
+function parseStartMs(v){
+  if(!v)return null;
+  const d=new Date(v);
+  return Number.isNaN(d.getTime())?null:d.getTime();
+}
+function getRowStartMs(row){
+  if(!row)return null;
+  return parseStartMs(row.COMMENCE_TIME||row.commence_time||row.GAME_TIME||row.game_time||row.START_TIME||row.start_time);
+}
+function getLockInfo(name,isG){
+  const row=getTonightPlayerRow(name,!!isG)||{};
+  const startMs=getRowStartMs(row);
+  return{started:!!(startMs&&Date.now()>=startMs),startMs,row};
+}
+function lockBadge(name,isG){
+  return getLockInfo(name,isG).started?`<span class="locked-badge">🔒 LOCKED</span>`:"";
+}
 function isTruthyFlag(v){return v===true||v===1||String(v||"").trim().toUpperCase()==="TRUE"}
 function getSampleFlags(name,isG){
   const row=getTonightPlayerRow(name,!!isG)||{};
@@ -438,7 +482,7 @@ function cleanRows(rows){if(!rows||!rows.length)return rows;return rows.map(row=
 function normalizeKeys(rows){
   if(!rows||!rows.length)return rows;
   return rows.map(row=>{
-    const clean={}; 
+    const clean={};
     for(const[k,v]of Object.entries(row)){
       const trimmed=String(k||"")
         .replace(/^\uFEFF/,'')
@@ -535,7 +579,7 @@ function getBestBets(){
 // ═══ SMART SLIPS ═══
 function getConvictionLegs(){
   const SLIP_WORTHY=new Set(["PTS","G","A","SOG","BLK","PPP","SV","GA","G_W","UD_FP"]);
-  const bets=getBestBets().filter(b=>b.edge>0&&!b.returning).filter(b=>{
+  const bets=getBestBets().filter(b=>b.edge>0&&!b.returning&&!getLockInfo(b.name,b.isG).started).filter(b=>{
     if(!SLIP_WORTHY.has(b.metric))return false;
     if(b.lean==="UNDER"&&parseFloat(b.dkLine)<=0.5)return false;
     return true;
@@ -553,13 +597,13 @@ function getConvictionLegs(){
     if(aiConflictLevel==="strong")signals.push("⚠️ AI conflict");else if(aiConflictLevel==="soft")signals.push("⚠️ AI cross-check");
     if(sk)signals.push(`🔥 ${sk.streak}G`);if(b.edge>=0.15)signals.push("💎 Elite");else if(b.edge>=0.08)signals.push("📈 Strong");
     if(b.hitRate>=0.8)signals.push(`✅ ${(b.hitRate*100).toFixed(0)}%`);
-    legs.push({...b,conviction,signals,hasAI:aiAgrees,hasAIConflict:!!aiConflictLevel,aiConflictLevel,aiDisagreementText,hasStreak:!!sk,teamSlot:b.teamSlot||`${b.team}${b.isG?":G":":S"}`});
+    legs.push({...b,conviction,signals,hasAI:aiAgrees,hasAIConflict:!!aiConflictLevel,aiConflictLevel,aiDisagreementText,hasStreak:!!sk,teamSlot:b.teamSlot||`${b.team}${b.isG?":G":":S"}`,gameTotal:toNum(b.gameTotal),lineMateEligible:!b.isG});
   }legs.sort((a,b)=>b.conviction-a.conviction);return legs;
 }
 function generateSlips(legs,n){
   if(legs.length<n)return[];const slips=[];const maxIter=n<=3?500:300;
   const seen=new Set();const dedupedLegs=legs.filter(l=>{const k=l.name.toLowerCase();if(seen.has(k))return false;seen.add(k);return true;});const pool=dedupedLegs.slice(0,n<=3?15:n<=4?18:20);
-  function gen(s,cur,used,tc){if(cur.length===n){const sc=cur.reduce((s,l)=>s+l.conviction,0);slips.push({legs:cur.slice(),score:sc,avgEdge:cur.reduce((s,l)=>s+l.edge,0)/n,avgHitRate:cur.reduce((s,l)=>s+l.hitRate,0)/n,teams:[...new Set(cur.map(l=>l.teamSlot||l.team))]});return}
+  function gen(s,cur,used,tc){if(cur.length===n){let sc=cur.reduce((s,l)=>s+l.conviction,0);const slipTags=[];for(let i=0;i<cur.length;i++){for(let j=i+1;j<cur.length;j++){const a=cur[i],b=cur[j];if(a.lineMateEligible&&b.lineMateEligible&&a.team===b.team&&Math.max(toNum(a.gameTotal),toNum(b.gameTotal))>=6){sc*=1.15;slipTags.push("🔗 LINE MATES")}}}slips.push({legs:cur.slice(),score:sc,avgEdge:cur.reduce((s,l)=>s+l.edge,0)/n,avgHitRate:cur.reduce((s,l)=>s+l.hitRate,0)/n,teams:[...new Set(cur.map(l=>l.teamSlot||l.team))],slipTags:[...new Set(slipTags)]});return}
     for(let i=s;i<pool.length&&slips.length<maxIter;i++){const l=pool[i];if(used.has(l.name))continue;const slot=l.teamSlot||l.team;const t=tc.get(slot)||0;if(t>=2)continue;used.add(l.name);tc.set(slot,t+1);cur.push(l);gen(i+1,cur,used,tc);cur.pop();used.delete(l.name);tc.set(slot,t)}}
   gen(0,[],new Set(),new Map());slips.sort((a,b)=>b.score-a.score);
   const MAX_SLIPS=8;let selected=[];
@@ -617,11 +661,11 @@ function getStreaks(){
 // ═══ THEY'RE DUE ═══
 function getDueBoard(){
   return getMemo("dueBoard",()=>{const due=[];const tNames=new Set(st.tonight.map(p=>p.player_name).filter(Boolean));
-  const stats=["PTS","G","A","SOG","BLK","HITS","UD_FP"];
+  const stats=["PTS","G","A","SOG","BLK","HITS","PPP","UD_FP"];
   for(const name of tNames){
     const logs=getPlayerLogs(name,false);
     if(logs.length<7)continue;const pT=getTonightPlayerRow(name,false)||{};const most=pT;
-    const MIN_AVG={PTS:0.5,G:0.25,A:0.35,SOG:2.0,BLK:1.0,HITS:1.5,UD_FP:4};
+    const MIN_AVG={PTS:0.5,G:0.25,A:0.35,SOG:2.0,BLK:1.0,HITS:1.5,PPP:0.2,UD_FP:4};
     for(const stat of stats){const seasAvg=toNum(most[`Seas_${stat}`]),l5Avg=toNum(most[`L5_${stat}`]);if(seasAvg<=(MIN_AVG[stat]||0))continue;
       const coldGap=(seasAvg-l5Avg)/seasAvg;if(coldGap<0.10)continue;
       let drought=0;for(const g of logs){if(toNum(g[stat])<seasAvg)drought++;else break}if(drought<2)continue;
@@ -629,12 +673,41 @@ function getDueBoard(){
       const oppGA=toNum(pT.OPP_GA_PG);if(oppGA>=3.2){matchupScore+=3;matchupTags.push(`Leaky D (${oppGA.toFixed(1)} GA/G)`)}else if(oppGA>=2.9){matchupScore+=1.5;matchupTags.push(`Avg D (${oppGA.toFixed(1)} GA/G)`)}
       const oppPK=toNum(pT.OPP_PK_PCT);if(oppPK<78){matchupScore+=2;matchupTags.push(`Weak PK (${oppPK.toFixed(0)}%)`)}
       const gt=toNum(pT.GAME_TOTAL);if(gt>=6.5){matchupScore+=2;matchupTags.push(`High O/U: ${gt}`)}
+      if(stat==="SOG"){
+        if(drought>=3){matchupScore+=2.5;matchupTags.push(`Shot drought (${drought}g)`)}
+        if(oppGA>=3.0){matchupScore+=1.5;matchupTags.push(`Soft goalie environment`)}
+      }else if(stat==="PPP"){
+        if(drought>=3){matchupScore+=2.5;matchupTags.push(`PPP drought (${drought}g)`)}
+        if(oppPK<80){matchupScore+=2;matchupTags.push(`Special-teams target`)}
+      }
       const prop=st.props.find(pr=>normalizePlayerName(pr.PLAYER_NAME)===normalizePlayerName(name)&&normalizePropMetric(pr.METRIC)===normalizePropMetric(stat));
       let propTag=null;if(prop)propTag={line:prop.DK_LINE,overOdds:parseInt(prop.OVER_ODDS)||null};
       const totalScore=coldGap*15+Math.min(drought*1.5,10)+matchupScore;if(totalScore<2)continue;
       const recentVals=logs.slice(0,7).map(g=>toNum(g[stat]));
       due.push({name,team:pT.team_abbr||"",opp:pT.opp_abbr_tonight||"",goalie:pT.opp_goalie_name||"TBD",goalieStatus:pT.opp_goalie_status||"",stat,type:"skt",seasAvg:seasAvg.toFixed(2),l5Avg:l5Avg.toFixed(2),coldGap:(coldGap*100).toFixed(0),drought,matchupScore,matchupTags,propTag,recentVals,totalScore});
   }}
+  for(const name of new Set(st.gTonight.map(p=>p.player_name).filter(Boolean))){
+    const logs=getPlayerLogs(name,true);
+    if(logs.length<5)continue;
+    const pT=getTonightPlayerRow(name,true)||{};
+    const seasGA=toNum(pT.Seas_GA),l3GA=toNum(pT.L3_GA);
+    if(seasGA<=0||l3GA<=0)continue;
+    const bounceGap=(l3GA-seasGA)/seasGA;
+    if(bounceGap<0.20)continue;
+    let drought=0;for(const g of logs){if(toNum(g.GA)>seasGA)drought++;else break}
+    if(drought<2)continue;
+    let matchupScore=0,matchupTags=[];
+    const oppITT=toNum(pT.OPP_IMPLIED_TOTAL||pT.opp_implied_total);
+    if(oppITT&&oppITT<=2.8){matchupScore+=3;matchupTags.push(`Low opp total (${oppITT.toFixed(1)})`)}
+    const moneyline=String(pT.MONEYLINE||"");
+    if(moneyline.startsWith("-")){matchupScore+=2;matchupTags.push(`Favored bounceback spot`)}
+    const totalScore=bounceGap*15+Math.min(drought*1.5,10)+matchupScore;
+    if(totalScore<4)continue;
+    const prop=st.props.find(pr=>normalizePlayerName(pr.PLAYER_NAME)===normalizePlayerName(name)&&normalizePropMetric(pr.METRIC)==="GA");
+    let propTag=null;if(prop)propTag={line:prop.DK_LINE,overOdds:parseInt(prop.OVER_ODDS)||null};
+    const recentVals=logs.slice(0,7).map(g=>toNum(g.GA));
+    due.push({name,team:pT.team_abbr||"",opp:pT.opp_abbr_tonight||"",goalie:"",goalieStatus:pT.starter_status||"",stat:"GA",type:"gol",seasAvg:seasGA.toFixed(2),l5Avg:l3GA.toFixed(2),coldGap:(bounceGap*100).toFixed(0),drought,matchupScore,matchupTags,propTag,recentVals,totalScore});
+  }
   const best={};for(const d of due){if(!best[d.name]||d.totalScore>best[d.name].totalScore)best[d.name]=d}
   return Object.values(best).sort((a,b)=>b.totalScore-a.totalScore);});
 }
@@ -904,7 +977,8 @@ function render(){
         picksHTML+=posEV.slice(0,40).map(b=>{const ep=(b.edge*100).toFixed(1),hr=(b.hitRate*100).toFixed(0),ip=(b.impliedProb*100).toFixed(0);const cls=b.edge>=0.15?"elite":b.edge>=0.08?"strong":"mid";const badges=riskBadges(b.name,b.isG,{showLimited:false});
           const matchupMeta=b.isG?`${esc(b.team)} vs ${esc(b.opp)}${b.starterStatus?` · ${esc(b.starterStatus)}`:""}`:`${esc(b.team)} vs ${esc(b.opp)} · vs ${esc(b.goalie||"TBD")}${b.goalieStatus?` (${esc(b.goalieStatus)})`:""}`;
           const vegasMeta=[b.moneyline?`ML ${b.moneyline}`:"",b.impliedTotal?`ITT ${b.impliedTotal}`:"",`${b.hits}/${b.total} games`].filter(Boolean).join(" · ");
-          return`<div class="bet-card ${cls}" style="cursor:pointer;border-color:${b.lean==="OVER"?"#22c55e":"#ef4444"}" onclick="streakToDash('${esc(b.name)}')"><div class="bet-left"><div class="bet-name">${b.isG?`🥅 `:""}${playerLink(b.name)}${badges}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta}</div><div class="bet-prop"><span class="prop-metric" style="font-size:10px">${b.metric}</span><span class="${b.lean==="OVER"?"prop-over":"prop-under"}" style="font-weight:700;font-size:13px">${b.lean} ${b.dkLine}</span><span style="color:#7dd3fc;font-size:11px">${fmtOdds(b.odds)}</span><span class="ev-badge ev-pos ev-big ${b.returning?"muted-risk":""}">+${ep}% EV</span></div><div class="bet-bar ${b.returning?"muted-risk":""}"><div class="bet-bar-fill" style="width:${hr}%;background:${b.edge>=0.15?"#ef4444":b.edge>=0.08?"#22c55e":"#f59726"}"></div></div><div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:#64748b"><span>You: ${hr}%</span><span>DK: ${ip}%</span></div></div><div class="bet-right"><div class="bet-edge pos ${b.returning?"muted-risk":""}">+${ep}%</div><div class="bet-sub">${b.returning?"reduced":"edge"}</div></div></div>`}).join("")+`</div>`}
+          const locked=getLockInfo(b.name,b.isG).started;
+          return`<div class="bet-card ${cls}${locked?" locked-card":""}" style="cursor:pointer;border-color:${b.lean==="OVER"?"#22c55e":"#ef4444"}" onclick="streakToDash('${esc(b.name)}')"><div class="bet-left"><div class="bet-name">${b.isG?`🥅 `:""}${playerLink(b.name)}${badges}${lockBadge(b.name,b.isG)}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta}</div><div class="bet-prop"><span class="prop-metric" style="font-size:10px">${b.metric}</span><span class="${b.lean==="OVER"?"prop-over":"prop-under"}" style="font-weight:700;font-size:13px">${b.lean} ${b.dkLine}</span><span style="color:#7dd3fc;font-size:11px">${fmtOdds(b.odds)}</span><span class="ev-badge ev-pos ev-big ${b.returning||locked?"muted-risk":""}">+${ep}% EV</span></div><div class="bet-bar ${b.returning||locked?"muted-risk":""}"><div class="bet-bar-fill" style="width:${hr}%;background:${b.edge>=0.15?"#ef4444":b.edge>=0.08?"#22c55e":"#f59726"}"></div></div><div style="display:flex;justify-content:space-between;margin-top:3px;font-size:9px;color:#64748b"><span>You: ${hr}%</span><span>DK: ${ip}%</span></div></div><div class="bet-right"><div class="bet-edge pos ${b.returning||locked?"muted-risk":""}">+${ep}%</div><div class="bet-sub">${locked?"started":b.returning?"reduced":"edge"}</div></div></div>`}).join("")+`</div>`}
 
     }else if(st.picksView==="slips"){
       const r=getSmartSlips();picksHTML=picksIntro;
@@ -913,7 +987,7 @@ function render(){
         picksHTML+=`<div class="bet-summary"><div class="bs-card"><div class="bs-val">${r.legs.length}</div><div class="bs-lbl">ELIGIBLE</div></div><div class="bs-card"><div class="bs-val" style="color:#38bdf8">${r.legs.filter(l=>l.hasAI).length}</div><div class="bs-lbl">AI-BACKED</div></div><div class="bs-card"><div class="bs-val" style="color:#ffaa00">${r.legs.filter(l=>l.hasStreak).length}</div><div class="bs-lbl">ON STREAKS</div></div><div class="bs-card"><div class="bs-val" style="color:#fda4af">${r.legs.filter(l=>l.hasAIConflict).length}</div><div class="bs-lbl">AI CONFLICTS</div></div><div class="bs-card"><div class="bs-val" style="color:#7dd3fc">${pay[st.slipLegs]}</div><div class="bs-lbl">PAYOUT</div></div></div>`;
         picksHTML+=`<div class="slip-controls"><span style="color:#64748b;font-size:11px">Legs:</span><div class="pf-btn ${st.slipLegs==="3"?"active":""}" onclick="setSlipLegs('3')">3-Leg</div><div class="pf-btn ${st.slipLegs==="4"?"active":""}" onclick="setSlipLegs('4')">4-Leg</div><div class="pf-btn ${st.slipLegs==="5"?"active":""}" onclick="setSlipLegs('5')">5-Leg</div></div>`;
         if(!slips.length)picksHTML+=`<div class="no-data" style="padding:20px;text-align:center">Not enough legs.</div>`;
-        else picksHTML+=slips.map((s,i)=>{const best=i===0;return`<div class="slip-card ${best?"best":""}"><div class="slip-header"><span class="slip-rank">${best?"⭐ BEST":"#"+(i+1)} · ${st.slipLegs}-LEG</span><span class="slip-score">${s.score.toFixed(1)} pts</span></div><div class="slip-legs">${s.legs.map(l=>`<div class="slip-leg"><span class="slip-leg-team">${esc(l.team)}</span><div style="flex:1;min-width:0"><span class="slip-leg-name">${l.isG?`🥅 `:""}${playerLink(l.name)}</span>${l.aiDisagreementText?`<div style="font-size:9px;color:${l.aiConflictLevel==="strong"?"#fda4af":"#fde68a"};margin-top:2px">${esc(l.aiDisagreementText)}</div>`:""}</div><div class="slip-leg-prop"><span class="slip-leg-metric">${l.metric}</span><span class="slip-leg-lean ${l.lean.toLowerCase()}">${l.lean} ${l.dkLine}</span><span class="slip-leg-edge">+${(l.edge*100).toFixed(0)}%</span></div></div>`).join("")}</div>${s.legs.some(l=>l.signals.length)?`<div class="slip-tags">${[...new Set(s.legs.flatMap(l=>l.signals))].slice(0,4).map(sg=>`<span class="slip-tag">${sg}</span>`).join("")}</div>`:""}<div class="slip-meta"><span>Avg edge: +${(s.avgEdge*100).toFixed(1)}%</span><span>Avg hit: ${(s.avgHitRate*100).toFixed(0)}%</span><span>${s.teams.length} teams</span></div></div>`}).join("")}
+        else picksHTML+=slips.map((s,i)=>{const best=i===0;return`<div class="slip-card ${best?"best":""}"><div class="slip-header"><span class="slip-rank">${best?"⭐ BEST":"#"+(i+1)} · ${st.slipLegs}-LEG</span><span class="slip-score">${s.score.toFixed(1)} pts</span></div><div class="slip-legs">${s.legs.map(l=>{const locked=getLockInfo(l.name,l.isG).started;return`<div class="slip-leg${locked?" locked-card":""}"><span class="slip-leg-team">${esc(l.team)}</span><div style="flex:1;min-width:0"><span class="slip-leg-name">${l.isG?`🥅 `:""}${playerLink(l.name)}</span>${lockBadge(l.name,l.isG)}${l.aiDisagreementText?`<div style="font-size:9px;color:${l.aiConflictLevel==="strong"?"#fda4af":"#fde68a"};margin-top:2px">${esc(l.aiDisagreementText)}</div>`:""}</div><div class="slip-leg-prop"><span class="slip-leg-metric">${l.metric}</span><span class="slip-leg-lean ${l.lean.toLowerCase()}">${l.lean} ${l.dkLine}</span><span class="slip-leg-edge">+${(l.edge*100).toFixed(0)}%</span></div></div>`}).join("")}</div>${(s.legs.some(l=>l.signals.length)||s.slipTags?.length)?`<div class="slip-tags">${[...new Set([...(s.slipTags||[]),...s.legs.flatMap(l=>l.signals)])].slice(0,5).map(sg=>`<span class="slip-tag">${sg}</span>`).join("")}</div>`:""}<div class="slip-meta"><span>Avg edge: +${(s.avgEdge*100).toFixed(1)}%</span><span>Avg hit: ${(s.avgHitRate*100).toFixed(0)}%</span><span>${s.teams.length} teams</span></div></div>`}).join("")}
 
     }else if(st.picksView==="picks"){
       const latestDate=getLatestPickDate();
@@ -923,14 +997,15 @@ function render(){
       else{const smash=todayPicks.filter(p=>normalizeConfidence(p.confidence)==="SMASH").length;const hits=todayPicks.filter(p=>{const h=(p.HIT||"").toString().toUpperCase();return h==="YES"||h==="TRUE"}).length;const miss=todayPicks.filter(p=>{const h=(p.HIT||"").toString().toUpperCase();return h==="NO"||h==="FALSE"}).length;const tracked=hits+miss;
         picksHTML=picksIntro+renderPickGuard(pickGuard)+`<div class="picks-summary"><div class="ps-card"><div class="ps-val">${todayPicks.length}</div><div class="ps-lbl">PICKS</div></div><div class="ps-card"><div class="ps-val">${smash}</div><div class="ps-lbl">SMASH</div></div>${tracked?`<div class="ps-card"><div class="ps-val" style="color:${hits>=miss?"#22c55e":"#ef4444"}">${hits}-${miss}</div><div class="ps-lbl">RECORD</div></div>`:`<div class="ps-card"><div class="ps-val" style="color:#64748b">—</div><div class="ps-lbl">RECORD</div></div>`}</div><div class="cards-grid">`;
         picksHTML+=todayPicks.map(pk=>{const c=normalizeConfidence(pk.confidence),cls=c==="SMASH"?"smash":c==="STRONG"?"strong":"";const h=(pk.HIT||"").toString().toUpperCase();const hasR=pk.ACTUAL_STAT!=null&&pk.ACTUAL_STAT!==""&&!isNaN(pk.ACTUAL_STAT);const isG=(pk.prop_type||"").startsWith("G_")||pk.prop_type==="SV"||pk.prop_type==="GA"||pk.prop_type==="G_W";const flags=getSampleFlags(pk.player,isG);const badges=riskBadges(pk.player,isG);let rHTML="";if(hasR||h){const rC=h==="YES"||h==="TRUE"?"result-hit":"result-miss";const rL=h==="YES"||h==="TRUE"?"✅ HIT":h==="NO"||h==="FALSE"?"❌ MISS":"⏳";rHTML=`<div class="pick-result"><span class="result-badge ${rC}">${rL}</span>${hasR?`<span class="result-actual">Actual: ${pk.ACTUAL_STAT}</span>`:""}</div>`}
-          return`<div class="pick-card ${cls}"><div><span class="pick-rank">#${pk.rank||"—"}</span><span class="pick-player">${playerLink(pk.player)}${badges}</span></div><div class="pick-matchup">${esc(pk.game||"")}</div><div class="pick-prop"><div class="pick-type">${pk.prop_type||""}</div><div class="pick-lean ${(pk.lean||"").toLowerCase()}">${pk.lean||""} ${pk.line||""}</div><div class="pick-conf ${cls}">${c||"LEAN"}</div></div>${pk.rationale?`<div class="pick-rationale">"${esc(pk.rationale)}"</div>`:""}${flags.returning?`<div class="risk-subnote">Returning from absence — season averages may not reflect current form.</div>`:""}${rHTML}</div>`}).join("")+`</div>`}
+          const locked=getLockInfo(pk.player,isG).started;
+          return`<div class="pick-card ${cls}${locked?" locked-card":""}"><div><span class="pick-rank">#${pk.rank||"—"}</span><span class="pick-player">${playerLink(pk.player)}${badges}${lockBadge(pk.player,isG)}</span></div><div class="pick-matchup">${esc(pk.game||"")}</div><div class="pick-prop"><div class="pick-type">${pk.prop_type||""}</div><div class="pick-lean ${(pk.lean||"").toLowerCase()}">${pk.lean||""} ${pk.line||""}</div><div class="pick-conf ${cls}">${c||"LEAN"}</div></div>${pk.rationale?`<div class="pick-rationale">"${esc(pk.rationale)}"</div>`:""}${flags.returning?`<div class="risk-subnote">Returning from absence — season averages may not reflect current form.</div>`:""}${rHTML}</div>`}).join("")+`</div>`}
 
     }else if(st.picksView==="streaks"){
       const all=getStreaks();const fil=st.streakFilter==="all"?all:st.streakFilter==="skt"?all.filter(s=>s.propType==="skt"):all.filter(s=>s.propType==="gol");
       picksHTML=picksIntro;if(!fil.length)picksHTML+=`<div class="no-data" style="padding:40px;text-align:center">No active streaks.</div>`;
       else{picksHTML+=`<div style="padding:12px 16px 4px;display:flex;justify-content:space-between;align-items:center"><div style="color:#ffaa00;font-size:13px;font-weight:700">🔥 Active Streaks</div><div style="color:#64748b;font-size:10px">${fil.length} streaks</div></div><div class="streak-filters"><div class="pf-btn ${st.streakFilter==="all"?"active":""}" onclick="setStreakFilter('all')">All</div><div class="pf-btn ${st.streakFilter==="skt"?"active":""}" onclick="setStreakFilter('skt')">🏒 Skaters</div><div class="pf-btn ${st.streakFilter==="gol"?"active":""}" onclick="setStreakFilter('gol')">🧱 Goalies</div></div><div class="cards-grid">`;
         picksHTML+=fil.map(s=>{const heat=getStreakHeat(s.streak);const odds=s.overOdds?fmtOdds(s.overOdds):"";const matchupMeta=s.propType==="gol"?`${esc(s.team)} vs ${esc(s.opp)}${s.starterStatus?` · ${esc(s.starterStatus)}`:""}`:`${esc(s.team)} vs ${esc(s.opp)} · vs ${esc(s.goalie||"TBD")}${s.goalieStatus?` (${esc(s.goalieStatus)})`:""}`;
-          return`<div class="streak-card ${heat.cls}" onclick="streakToDash('${esc(s.player)}')"><div class="streak-left"><div><span class="streak-emoji">${s.emoji}</span><span class="streak-name">${playerLink(s.player)}</span><span class="streak-label">${s.label}</span></div><div class="streak-meta">${matchupMeta}</div><div class="streak-meta">${s.desc}</div><div class="streak-chart">${miniChart(s.recentVals,s.threshold)}</div>${s.dkLine?`<div class="streak-prop">DK ${s.stat} ${s.dkLine} ${odds?" O:"+odds:""} · Avg: ${s.avgDuring}</div>`:`<div class="streak-prop">Avg during: ${s.avgDuring} · Season: ${s.seasAvg}</div>`}</div><div class="streak-right"><div class="streak-count">${s.streak}</div><div class="streak-sub">games</div></div></div>`}).join("")+`</div>`}
+          return`<div class="streak-card ${heat.cls}${getLockInfo(s.player,s.propType==="gol").started?" locked-card":""}" onclick="streakToDash('${esc(s.player)}')"><div class="streak-left"><div><span class="streak-emoji">${s.emoji}</span><span class="streak-name">${playerLink(s.player)}${lockBadge(s.player,s.propType==="gol")}</span><span class="streak-label">${s.label}</span></div><div class="streak-meta">${matchupMeta}</div><div class="streak-meta">${s.desc}</div><div class="streak-chart">${miniChart(s.recentVals,s.threshold)}</div>${s.dkLine?`<div class="streak-prop">DK ${s.stat} ${s.dkLine} ${odds?" O:"+odds:""} · Avg: ${s.avgDuring}</div>`:`<div class="streak-prop">Avg during: ${s.avgDuring} · Season: ${s.seasAvg}</div>`}</div><div class="streak-right"><div class="streak-count">${s.streak}</div><div class="streak-sub">${getLockInfo(s.player,s.propType==="gol").started?"started":"games"}</div></div></div>`}).join("")+`</div>`}
 
     }else if(st.picksView==="due"){
       const all=getDueBoard();picksHTML=picksIntro;
@@ -938,7 +1013,7 @@ function render(){
       else{picksHTML+=`<div class="bet-summary"><div class="bs-card"><div class="bs-val" style="color:#38bdf8">${all.length}</div><div class="bs-lbl">DUE UP</div></div><div class="bs-card"><div class="bs-val" style="color:#818cf8">${all.filter(d=>d.matchupScore>=2).length}</div><div class="bs-lbl">+ MATCHUP</div></div><div class="bs-card"><div class="bs-val" style="color:#fde68a">${all.filter(d=>d.propTag).length}</div><div class="bs-lbl">HAS PROP</div></div></div>`;
         picksHTML+=`<div style="padding:0 16px 4px;color:#64748b;font-size:10px">Cold streak + strong season avg + soft opponent = regression coming.</div><div class="cards-grid">`;
         picksHTML+=all.map((d,i)=>{const top=i<3;const tags=[`<span class="due-tag cold">❄️ ${d.coldGap}% below avg</span>`,`<span class="due-tag cold">📉 ${d.drought}G drought</span>`];d.matchupTags.forEach(mt=>tags.push(`<span class="due-tag matchup">✅ ${esc(mt)}</span>`));if(d.propTag)tags.push(`<span class="due-tag prop">🎲 DK ${d.stat} ${d.propTag.line}${d.propTag.overOdds?" O:"+fmtOdds(d.propTag.overOdds):""}</span>`);
-          return`<div class="due-card ${top?"top":""}" onclick="streakToDash('${esc(d.name)}')"><div class="due-left"><div><span style="font-size:14px;margin-right:4px">🧊</span><span class="due-name">${playerLink(d.name)}</span><span class="due-label">${d.stat}</span></div><div class="due-meta">${esc(d.team)} vs ${esc(d.opp)} · vs ${esc(d.goalie)}${d.goalieStatus?` (${esc(d.goalieStatus)})`:""}</div><div class="due-meta">Season: ${d.seasAvg}/g → L5: ${d.l5Avg}/g</div><div class="due-chart">${dueMiniChart(d.recentVals,parseFloat(d.seasAvg))}</div><div class="due-tags">${tags.join("")}</div></div><div class="due-right"><div class="due-score">${d.totalScore.toFixed(0)}</div><div class="due-sub">due score</div></div></div>`}).join("")+`</div>`}
+          return`<div class="due-card ${top?"top":""}${getLockInfo(d.name,d.type==="gol").started?" locked-card":""}" onclick="streakToDash('${esc(d.name)}')"><div class="due-left"><div><span style="font-size:14px;margin-right:4px">🧊</span><span class="due-name">${playerLink(d.name)}${lockBadge(d.name,d.type==="gol")}</span><span class="due-label">${d.stat}</span></div><div class="due-meta">${esc(d.team)} vs ${esc(d.opp)} · vs ${esc(d.goalie)}${d.goalieStatus?` (${esc(d.goalieStatus)})`:""}</div><div class="due-meta">Season: ${d.seasAvg}/g → L5: ${d.l5Avg}/g</div><div class="due-chart">${dueMiniChart(d.recentVals,parseFloat(d.seasAvg))}</div><div class="due-tags">${tags.join("")}</div></div><div class="due-right"><div class="due-score">${d.totalScore.toFixed(0)}</div><div class="due-sub">${getLockInfo(d.name,d.type==="gol").started?"started":"due score"}</div></div></div>`}).join("")+`</div>`}
 
     }else if(st.picksView==="snipers"){
       const snipers=getSnipers();picksHTML=picksIntro;
@@ -951,7 +1026,7 @@ function render(){
           if(s.hitRate7>=0.3)tags.push(`<span class="draft-tag" style="background:#ef444422;color:#ef4444">💥 7+ SOG ${(s.hitRate7*100).toFixed(0)}%</span>`);
           if(s.seasAvg>=3.5)tags.push(`<span class="draft-tag" style="background:#38bdf822;color:#38bdf8">Volume ${s.seasAvg.toFixed(1)}/g</span>`);
           if(s.dkProp)tags.push(`<span class="draft-tag" style="background:#fde68a22;color:#fde68a">🎲 DK ${s.dkProp.line} O:${fmtOdds(s.dkProp.over)}</span>`);
-          return `<div class="bet-card ${cls}" onclick="sniperToDash('${esc(s.name)}')"><div class="bet-left"><div class="bet-name">${playerLink(s.name)}</div><div class="bet-meta">${esc(s.team)} vs ${esc(s.opp)} · vs ${esc(s.goalie)}${s.goalieStatus?` (${esc(s.goalieStatus)})`:""}</div><div class="bet-prop"><span class="prop-metric" style="font-size:10px">SOG</span><span style="color:#22c55e;font-weight:700;font-size:13px">${s.hits3}/${s.total} games 3+</span><span style="color:${trendColor};font-size:11px">${trendIcon} L5: ${s.l5Avg.toFixed(1)}/g</span></div><div class="bet-bar"><div class="bet-bar-fill" style="width:${s.hitRate3*100}%;background:#22c55e"></div></div>${tags.length?`<div class="draft-tags" style="margin-top:6px">${tags.join("")}</div>`:""}</div><div class="bet-right"><div class="bet-edge pos">${(s.hitRate3*100).toFixed(0)}%</div><div class="bet-sub">3+ SOG</div></div></div>`;
+          const locked=getLockInfo(s.name,false).started;return `<div class="bet-card ${cls}${locked?" locked-card":""}" onclick="sniperToDash('${esc(s.name)}')"><div class="bet-left"><div class="bet-name">${playerLink(s.name)}${lockBadge(s.name,false)}</div><div class="bet-meta">${esc(s.team)} vs ${esc(s.opp)} · vs ${esc(s.goalie)}${s.goalieStatus?` (${esc(s.goalieStatus)})`:""}</div><div class="bet-prop"><span class="prop-metric" style="font-size:10px">SOG</span><span style="color:#22c55e;font-weight:700;font-size:13px">${s.hits3}/${s.total} games 3+</span><span style="color:${trendColor};font-size:11px">${trendIcon} L5: ${s.l5Avg.toFixed(1)}/g</span></div><div class="bet-bar"><div class="bet-bar-fill" style="width:${s.hitRate3*100}%;background:#22c55e"></div></div>${tags.length?`<div class="draft-tags" style="margin-top:6px">${tags.join("")}</div>`:""}</div><div class="bet-right"><div class="bet-edge pos">${(s.hitRate3*100).toFixed(0)}%</div><div class="bet-sub">${locked?"started":"3+ SOG"}</div></div></div>`;
         }).join("")+`</div>`}
 
     }else if(st.picksView==="parlays"){
@@ -960,7 +1035,7 @@ function render(){
       picksHTML=picksIntro+`<div style="padding:12px 16px 4px;color:#818cf8;font-size:13px;font-weight:700">🎯 Stat Parlays</div><div style="padding:0 16px 4px;color:#64748b;font-size:10px">Same-stat parlays ranked by hit rate + EV + matchup.</div>`;
       picksHTML+=`<div class="due-filters">${availStats.map(s=>`<div class="pf-btn ${pStat===s?"active":""}" onclick="setParlayStat('${s}')">${s}</div>`).join("")}</div>`;
       if(!board.length)picksHTML+=`<div class="no-data" style="padding:40px;text-align:center">No DK ${pStat} props available.</div>`;
-      else{picksHTML+=`<div class="cards-grid">${board.slice(0,12).map((d,i)=>{const hrPct=(d.hitRate*100).toFixed(0);const isTop=i<3;const matchupMeta=d.isG?`${esc(d.team)} vs ${esc(d.opp)}${d.starterStatus?` · ${esc(d.starterStatus)}`:""}`:`${esc(d.team)} vs ${esc(d.opp)} · vs ${esc(d.goalie)}${d.goalieStatus?` (${esc(d.goalieStatus)})`:""}`;const vegasMeta=[d.moneyline?`ML ${d.moneyline}`:"",d.impliedTotal?`ITT ${d.impliedTotal}`:""].filter(Boolean).join(" · ");return`<div class="due-card ${isTop?"top":""}" onclick="streakToDash('${esc(d.name)}')"><div class="due-left"><div><span style="font-size:12px;font-weight:800;color:${isTop?"#818cf8":"#38bdf8"};margin-right:6px">#${i+1}</span><span class="due-name">${playerLink(d.name)}</span></div><div class="due-meta">${matchupMeta}</div>${vegasMeta?`<div class="due-meta">${vegasMeta}</div>`:""}<div class="due-tags"><span class="due-tag">${hrPct}% hit</span>${d.edge>0?`<span class="due-tag matchup">+${(d.edge*100).toFixed(0)}% EV</span>`:""}<span class="due-tag prop">DK ${d.dkLine} O:${fmtOdds(d.overOdds)}</span></div></div><div class="due-right"><div class="due-score" style="color:${isTop?"#818cf8":"#38bdf8"}">${d.score.toFixed(0)}</div><div class="due-sub">score</div></div></div>`}).join("")}</div>`;
+      else{picksHTML+=`<div class="cards-grid">${board.slice(0,12).map((d,i)=>{const hrPct=(d.hitRate*100).toFixed(0);const isTop=i<3;const matchupMeta=d.isG?`${esc(d.team)} vs ${esc(d.opp)}${d.starterStatus?` · ${esc(d.starterStatus)}`:""}`:`${esc(d.team)} vs ${esc(d.opp)} · vs ${esc(d.goalie)}${d.goalieStatus?` (${esc(d.goalieStatus)})`:""}`;const vegasMeta=[d.moneyline?`ML ${d.moneyline}`:"",d.impliedTotal?`ITT ${d.impliedTotal}`:""].filter(Boolean).join(" · ");const locked=getLockInfo(d.name,d.isG).started;return`<div class="due-card ${isTop?"top":""}${locked?" locked-card":""}" onclick="streakToDash('${esc(d.name)}')"><div class="due-left"><div><span style="font-size:12px;font-weight:800;color:${isTop?"#818cf8":"#38bdf8"};margin-right:6px">#${i+1}</span><span class="due-name">${playerLink(d.name)}${lockBadge(d.name,d.isG)}</span></div><div class="due-meta">${matchupMeta}</div>${vegasMeta?`<div class="due-meta">${vegasMeta}</div>`:""}<div class="due-tags"><span class="due-tag">${hrPct}% hit</span>${d.edge>0?`<span class="due-tag matchup">+${(d.edge*100).toFixed(0)}% EV</span>`:""}<span class="due-tag prop">DK ${d.dkLine} O:${fmtOdds(d.overOdds)}</span></div></div><div class="due-right"><div class="due-score" style="color:${isTop?"#818cf8":"#38bdf8"}">${d.score.toFixed(0)}</div><div class="due-sub">${locked?"started":"score"}</div></div></div>`}).join("")}</div>`;
         if(combos2.length)picksHTML+=`<div style="padding:12px 16px 0"><div style="color:#38bdf8;font-size:12px;font-weight:700;margin-bottom:8px">🎰 Best 2-Leg ${pStat} Parlays</div><div class="cards-grid">${combos2.map((c,i)=>{const matchupMeta=c.players.map(p=>p.isG?`${esc(p.team)}-${esc(p.opp)}${p.starterStatus?` ${esc(p.starterStatus)}`:""}`:`${esc(p.team)}-${esc(p.opp)} vs ${esc(p.goalie||"TBD")}${p.goalieStatus?` (${esc(p.goalieStatus)})`:""}`).join(" · ");const vegasMeta=c.players.map(p=>[p.moneyline?`${esc(p.team)} ML ${p.moneyline}`:"",p.impliedTotal?`${esc(p.team)} ITT ${p.impliedTotal}`:""].filter(Boolean).join(" · ")).filter(Boolean).join(" · ");return`<div class="bet-card ${i===0?"elite":"mid"}" style="cursor:default"><div class="bet-left"><div class="bet-name">${c.players.map(p=>playerLink(p.name)).join(" + ")}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta||`${c.teams.join(" · ")} · Avg edge: ${c.avgEdge>0?"+":""}${(c.avgEdge*100).toFixed(0)}%`}</div></div><div class="bet-right"><div class="bet-edge pos">${(c.avgHitRate*100).toFixed(0)}%</div><div class="bet-sub">avg hit</div></div></div>`}).join("")}</div></div>`;
         if(combos3.length)picksHTML+=`<div style="padding:12px 16px 0"><div style="color:#38bdf8;font-size:12px;font-weight:700;margin-bottom:8px">🎰 Best 3-Leg ${pStat} Parlays</div><div class="cards-grid">${combos3.map((c,i)=>{const matchupMeta=c.players.map(p=>p.isG?`${esc(p.team)}-${esc(p.opp)}${p.starterStatus?` ${esc(p.starterStatus)}`:""}`:`${esc(p.team)}-${esc(p.opp)} vs ${esc(p.goalie||"TBD")}${p.goalieStatus?` (${esc(p.goalieStatus)})`:""}`).join(" · ");const vegasMeta=c.players.map(p=>[p.moneyline?`${esc(p.team)} ML ${p.moneyline}`:"",p.impliedTotal?`${esc(p.team)} ITT ${p.impliedTotal}`:""].filter(Boolean).join(" · ")).filter(Boolean).join(" · ");return`<div class="bet-card ${i===0?"elite":"mid"}" style="cursor:default"><div class="bet-left"><div class="bet-name">${c.players.map(p=>playerLink(p.name)).join(" + ")}</div><div class="bet-meta">${matchupMeta}</div><div class="bet-meta">${vegasMeta||`${c.teams.join(" · ")} · Avg edge: ${c.avgEdge>0?"+":""}${(c.avgEdge*100).toFixed(0)}%`}</div></div><div class="bet-right"><div class="bet-edge pos">${(c.avgHitRate*100).toFixed(0)}%</div><div class="bet-sub">avg hit</div></div></div>`}).join("")}</div></div>`}
 
@@ -977,7 +1052,8 @@ function render(){
         const l5v=parseFloat(p.l5UD),projv=parseFloat(p.projUD);if(l5v>projv*1.15)tags.push(`<span class="draft-tag" style="background:#22c55e22;color:#22c55e">📈 HOT</span>`);
         (stackTags.get(normalizePlayerName(p.name))||new Set()).forEach(tag=>{const clr=tag.includes("CORRELATED")?"#60a5fa":tag.includes("HIGH TOTAL")?"#fbbf24":"#34d399";tags.push(`<span class="draft-tag" style="background:${clr}22;color:${clr}">${tag}</span>`);});
         const meta=p.isGoalie?`${esc(p.team)} vs ${esc(p.opp)}`:`${esc(p.team)} vs ${esc(p.opp)} · vs ${esc(p.goalie)}${p.goalieStatus?` (${esc(p.goalieStatus)})`:""}`;
-        picksHTML+=`${tc?`<div class="draft-tier-label" style="color:${tier.color}">${tier.label}</div>`:""}<div class="draft-card${d?" drafted":""}${p.isSmash&&!d?" smash":!d?" "+tier.cls:""}${p.pos==="G"&&!d?" goalie":""}" onclick="toggleDrafted('${esc(p.name)}')"><div class="draft-rank" style="color:${d?"#1e3a5f":tier.color}">${i+1}</div><div class="draft-main"><div class="draft-name">${playerLink(p.name)}<span class="draft-pos ${getPosClass(p.pos)}">${p.pos}</span></div><div class="draft-meta">${meta}</div>${p.returning?`<div class="risk-subnote">Returning from absence — season averages may not reflect current form.</div>`:""}${tags.length?`<div class="draft-tags">${tags.join("")}</div>`:""}</div><div class="draft-fp"><div class="draft-fp-val" style="color:${d?"#1e3a5f":tier.color}">${p.projUD}</div><div class="draft-fp-lbl">UD FP</div>${l5v!==projv?`<div style="font-size:9px;color:${l5v>projv?"#22c55e":"#ef4444"};margin-top:1px">L5: ${p.l5UD}</div>`:""}</div></div>`});
+        const locked=getLockInfo(p.name,p.pos==="G").started;
+        picksHTML+=`${tc?`<div class="draft-tier-label" style="color:${tier.color}">${tier.label}</div>`:""}<div class="draft-card${d?" drafted":""}${p.isSmash&&!d?" smash":!d?" "+tier.cls:""}${p.pos==="G"&&!d?" goalie":""}${locked?" locked-card":""}" onclick="toggleDrafted('${esc(p.name)}')"><div class="draft-rank" style="color:${d?"#1e3a5f":tier.color}">${i+1}</div><div class="draft-main"><div class="draft-name">${playerLink(p.name)}${lockBadge(p.name,p.pos==="G")}<span class="draft-pos ${getPosClass(p.pos)}">${p.pos}</span></div><div class="draft-meta">${meta}</div>${p.returning?`<div class="risk-subnote">Returning from absence — season averages may not reflect current form.</div>`:""}${tags.length?`<div class="draft-tags">${tags.join("")}</div>`:""}</div><div class="draft-fp"><div class="draft-fp-val" style="color:${d?"#1e3a5f":tier.color}">${p.projUD}</div><div class="draft-fp-lbl">${locked?"STARTED":"UD FP"}</div>${l5v!==projv?`<div style="font-size:9px;color:${l5v>projv?"#22c55e":"#ef4444"};margin-top:1px">L5: ${p.l5UD}</div>`:""}</div></div>`});
       picksHTML+=`</div>`;
       if(stacks.length){
         picksHTML+=`<div style="padding:14px 16px 4px;color:#38bdf8;font-size:12px;font-weight:700">⚡ Stacks</div><div style="padding:0 16px 6px;color:#64748b;font-size:10px">Top 2-player skater stacks ranked by combined UD projection, game total, and opposing-goalie weakness.</div><div class="cards-grid">`;
@@ -990,14 +1066,28 @@ function render(){
       const allM=[...new Set(st.props.map(p=>p.METRIC).filter(Boolean))].sort();const fil=st.propsMetric==="ALL"?st.props:st.props.filter(p=>p.METRIC===st.propsMetric);
       const srch=st.propsSearch?fil.filter(p=>(p.PLAYER_NAME||"").toLowerCase().includes(st.propsSearch.toLowerCase())):fil;
       const sorted=[...srch].sort((a,b)=>(a.PLAYER_NAME||"").localeCompare(b.PLAYER_NAME||"")).slice(0,200);
+      const parlayStats=["PTS","G","A","SOG","BLK","HITS","PPP","SV"].filter(m=>allM.includes(m));
+      const propsParlayStat=parlayStats.includes(st.parlayStat)?st.parlayStat:(parlayStats[0]||"PTS");
+      const propsBoard=getStatParlayBoard(propsParlayStat);
+      const propsCombos3=getStatParlayCombos(propsBoard,3).slice(0,5);
       picksHTML=picksIntro+`<div style="padding:8px 16px"><input type="text" id="propsSearchInput" placeholder="Search player..." value="${esc(st.propsSearch)}"/></div>
       <div class="props-filter"><div class="pf-btn ${st.propsMetric==="ALL"?"active":""}" onclick="setPropsMetric('ALL')">All</div>${allM.map(m=>`<div class="pf-btn ${st.propsMetric===m?"active":""}" onclick="setPropsMetric('${m}')">${m}</div>`).join("")}</div>
-      <div style="padding:0 16px;color:#64748b;font-size:10px;margin-bottom:4px">${srch.length} props</div>
+      <div style="padding:0 16px;color:#64748b;font-size:10px;margin-bottom:4px">${srch.length} props</div>`;
+      if(parlayStats.length){
+        picksHTML+=`<div style="padding:12px 16px 4px;color:#818cf8;font-size:13px;font-weight:700">🎯 Same-Stat Parlays</div><div style="padding:0 16px 4px;color:#64748b;font-size:10px">Top 3-leg same-stat combos ranked by conviction score, hit rate, EV, and matchup.</div><div class="due-filters">${parlayStats.map(s=>`<div class="pf-btn ${propsParlayStat===s?"active":""}" onclick="setParlayStat('${s}')">${s}</div>`).join("")}</div>`;
+        if(propsCombos3.length){
+          picksHTML+=`<div class="cards-grid">${propsCombos3.map((c,i)=>{const score=Math.round(c.score);const tags=["🧱 SAME STAT"];if(c.avgHitRate>=0.65)tags.push("🔥 HIGH HIT RATE");if(c.avgEdge>0.08)tags.push("💎 ELITE EDGE");if(c.teams.length===3)tags.push("🌍 3 TEAMS");return`<div class="bet-card ${i===0?"elite":"mid"}" style="cursor:default"><div class="bet-left"><div class="bet-name">${c.players.map(p=>playerLink(p.name)).join(" + ")}</div><div class="bet-meta">${propsParlayStat} OVER · ${c.players.map(p=>`${esc(p.team)} vs ${esc(p.opp)}`).join(" · ")}</div><div class="draft-tags" style="margin-top:6px">${tags.map(tag=>`<span class="draft-tag" style="background:${tag.includes("ELITE")?"#22c55e22":tag.includes("HIGH HIT")?"#fbbf2422":"#818cf822"};color:${tag.includes("ELITE")?"#22c55e":tag.includes("HIGH HIT")?"#fbbf24":"#818cf8"}">${tag}</span>`).join("")}</div></div><div class="bet-right"><div class="bet-edge pos">${score}</div><div class="bet-sub">conviction</div><div style="font-size:10px;color:#a5b4fc;margin-top:4px">${(c.avgHitRate*100).toFixed(0)}% hit · ${c.avgEdge>0?"+":""}${(c.avgEdge*100).toFixed(0)}% EV</div></div></div>`}).join("")}</div>`;
+        }else{
+          picksHTML+=`<div class="no-data" style="padding:20px 16px;text-align:center">No same-stat ${propsParlayStat} parlay combos available.</div>`;
+        }
+      }
+      picksHTML+=`
       <div class="props-tbl-wrap"><table><thead><tr><th>Player</th><th>Prop</th><th>Line</th><th>Over</th><th>Under</th><th>Hit%</th><th>Edge</th></tr></thead><tbody>${sorted.map(p=>{
         const isGP=isGoalieProp(p.METRIC);const hr=getHitRate(p.PLAYER_NAME,propToLogCol(p.METRIC),parseFloat(p.DK_LINE),isGP);const oIP=impliedProb(parseInt(p.OVER_ODDS));const flags=getSampleFlags(p.PLAYER_NAME,isGP);
         const hrP=hr?`${(hr.overRate*100).toFixed(0)}%`:"—";const ev=hr&&oIP!==null?hr.overRate-oIP:null;
         const evS=ev!==null?`<span class="ev-badge ${ev>0.08?"ev-pos":ev>0?"ev-neutral":"ev-neg"}">${ev>0?"+":""}${(ev*100).toFixed(0)}%</span>`:"—";
-        return`<tr class="${flags.returning?"props-returning":""}"><td style="text-align:left;font-weight:600">${playerLink(p.PLAYER_NAME)}${flags.returning?` <span class="risk-badge risk-returning">⚠️</span>`:flags.limited?` <span class="risk-badge risk-limited">⚠️</span>`:""}</td><td><span style="color:#38bdf8;font-weight:600">${p.METRIC}</span></td><td style="font-weight:700">${p.DK_LINE}</td><td class="${parseInt(p.OVER_ODDS)<=-130?"odds-over":parseInt(p.OVER_ODDS)>=130?"odds-under":"odds-even"}">${fmtOdds(p.OVER_ODDS)}</td><td class="${parseInt(p.UNDER_ODDS)<=-130?"odds-over":parseInt(p.UNDER_ODDS)>=130?"odds-under":"odds-even"}">${fmtOdds(p.UNDER_ODDS)}</td><td style="font-weight:600">${hrP}</td><td>${evS}</td></tr>`}).join("")}</tbody></table></div>`;
+        const locked=getLockInfo(p.PLAYER_NAME,isGP).started;
+        return`<tr class="${flags.returning?"props-returning":""}${locked?" props-locked":""}"><td style="text-align:left;font-weight:600">${playerLink(p.PLAYER_NAME)}${flags.returning?` <span class="risk-badge risk-returning">⚠️</span>`:flags.limited?` <span class="risk-badge risk-limited">⚠️</span>`:""}${locked?` <span class="locked-badge">🔒</span>`:""}</td><td><span style="color:#38bdf8;font-weight:600">${p.METRIC}</span></td><td style="font-weight:700">${p.DK_LINE}</td><td class="${parseInt(p.OVER_ODDS)<=-130?"odds-over":parseInt(p.OVER_ODDS)>=130?"odds-under":"odds-even"}">${fmtOdds(p.OVER_ODDS)}</td><td class="${parseInt(p.UNDER_ODDS)<=-130?"odds-over":parseInt(p.UNDER_ODDS)>=130?"odds-under":"odds-even"}">${fmtOdds(p.UNDER_ODDS)}</td><td style="font-weight:600">${hrP}</td><td>${evS}</td></tr>`}).join("")}</tbody></table></div>`;
     }
   }
 
@@ -1005,7 +1095,7 @@ function render(){
   const showCtrl=activeTab==="dashboard"||activeTab==="gamelog";
   app.innerHTML=`
   <div class="header">
-    <div class="header-top"><div class="header-title">🏒 NHL DFS Dashboard</div><button class="refresh-btn" id="refreshBtn">↻ Refresh</button></div>
+    <div class="header-top"><div class="header-title">🏒 NHL DFS Dashboard</div><div style="display:flex;gap:8px"><button class="theme-btn" id="themeBtn">${st.theme==="light"?"🌙 Dark":"☀️ Light"}</button><button class="refresh-btn" id="refreshBtn">↻ Refresh</button></div></div>
     <div class="top-nav">
       <button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">📊 Dash</button>
       <button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">📋 Log</button>
@@ -1043,7 +1133,7 @@ function render(){
     </div>
     ${pickBanner?`<div class="dash-bottom">${pickBanner}</div>`:""}
     ${propsHTML?`<div class="dash-bottom dash-props">${propsHTML}</div>`:""}
-    <div class="timestamp">Data: ${esc(lastUp)}${st.loadedAt?` · Loaded: ${st.loadedAt}`:""}</div>
+    <div class="timestamp">As of: ${fmtNowEastern()} · Data: ${esc(lastUp)}${st.loadedAt?` · Loaded: ${st.loadedAt}`:""}</div>
     <div class="timestamp" style="color:#1e3a5f;font-size:9px;padding-top:0">Made by S. Krolikowski w/ Claude · 2026</div>
   </div>
   <div class="page ${activeTab==="gamelog"?"active":""}">${logHTML}</div>
@@ -1069,9 +1159,11 @@ function render(){
 
   document.getElementById("metricSel")?.addEventListener("change",e=>{st.metric=e.target.value;render()});
   document.getElementById("lineInput")?.addEventListener("change",e=>{st.line=e.target.value;render()});
+  document.getElementById("themeBtn")?.addEventListener("click",toggleTheme);
   document.getElementById("refreshBtn")?.addEventListener("click",loadAllData);
   document.getElementById("oppFilter")?.addEventListener("change",e=>{st.oppFilter=e.target.value;render()});
   document.getElementById("propsSearchInput")?.addEventListener("input",e=>{st.propsSearch=e.target.value;render()});
+  applyTheme();
   restoreFocus(focus);
 }
 
