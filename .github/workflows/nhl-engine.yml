@@ -30,4 +30,4 @@ jobs:
           python -m pip install pandas requests pytz gspread google-auth google-genai
 
       - name: Run NHL engine
-        run: python mlb_nhl_nba_fix/NHLEngine5-4.py
+        run: python NHLEngine5-4.py

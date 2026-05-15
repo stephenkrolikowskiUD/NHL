@@ -26,4 +26,4 @@ jobs:
           python -m pip install pandas numpy requests pytz gspread google-auth
 
       - name: Run NHL grader
-        run: python mlb_nhl_nba_fix/NHLGrader5-4.py
+        run: python NHLGrader5-4.py
