@@ -3,6 +3,7 @@ name: NHL Engine
 on:
   workflow_dispatch:
   schedule:
+    - cron: "45 5 * * *"
     - cron: "0 15 * * *"
     - cron: "0 19 * * *"
     - cron: "30 22 * * *"
