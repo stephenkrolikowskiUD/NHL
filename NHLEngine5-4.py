@@ -19,10 +19,12 @@ Sheets written:
 # !pip install google-genai gspread google-auth requests pandas
 
 import requests, json, time, re, math, unicodedata, os
+import atexit
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 import pandas as pd
 from google.oauth2.service_account import Credentials
+from run_logger import RunLogger
 
 # ═══════════════════════════════════════════════
 # 🔑 API KEYS — Loaded from Colab userdata (or prompted)
@@ -55,6 +57,31 @@ else:
 SHEET_ID = "1OpER7aRmMFWyxMONdg_LqiyQ47cA3dWRSR8UEQH8FIM"
 TODAY = date.today().isoformat()  # YYYY-MM-DD
 SNAPSHOT_DATE = "2026-05-04"
+
+SHEET_SCHEMAS = {
+    'Tonights_Skaters': {
+        'required': ['player_name', 'team_abbr', 'opp_abbr_tonight', 'home_away_tonight', 'position',
+                     'L5_GAMES_PLAYED', 'GAMES_LAST_7D', 'LIMITED_SAMPLE', 'RETURNING'],
+        'recommended': ['opp_goalie_name', 'OPP_GA_PG'],
+    },
+    'Tonights_Goalies': {
+        'required': ['player_name', 'team_abbr', 'opp_abbr_tonight'],
+        'recommended': [],
+    },
+    'Daily_Picks': {
+        'required': ['DATE', 'rank', 'player', 'team', 'prop_type', 'line', 'lean', 'confidence', 'HIT'],
+        'recommended': ['CONSENSUS_COUNT', 'CONSENSUS_RUNS', 'RUN_NUMBER'],
+    },
+    'DK_Player_Props': {
+        'required': ['PLAYER_NAME', 'METRIC', 'DK_LINE', 'OVER_ODDS', 'UNDER_ODDS'],
+        'recommended': [],
+    },
+    'Skater_Game_Logs': {
+        'required': ['player_id', 'player_name', 'game_date', 'opp_abbr',
+                     'G', 'A', 'PTS', 'SOG', 'BLK', 'UD_FP', 'DK_FP'],
+        'recommended': ['HITS', 'PPP'],
+    },
+}
 
 # NHL API base
 NHL_API = "https://api-web.nhle.com/v1"
@@ -113,6 +140,8 @@ def get_gspread_client():
 gc = get_gspread_client()
 wb = gc.open_by_key(SHEET_ID)
 print(f"✅ Connected to Google Sheet: {SHEET_ID}")
+runlog = RunLogger(gc, SHEET_ID, sport='NHL', kind='engine')
+atexit.register(runlog.finalize_and_write)
 
 def clean_cell(val):
     """Clean values for Sheets API — must be at module level for gspread"""
@@ -129,6 +158,7 @@ def safe_upload(name, rows):
     if not rows:
         print(f"  ⚠️ No data for {name}, skipping")
         return
+    validate_sheet_schema(name, rows)
     try:
         ws = wb.worksheet(name)
     except gspread.exceptions.WorksheetNotFound:
@@ -138,7 +168,37 @@ def safe_upload(name, rows):
     ws.clear()
     ws.update([headers] + clean_rows)
     print(f"  ✅ {name}: {len(rows)} rows, {len(headers)} cols")
+    try:
+        runlog.record_write(name, len(rows))
+    except Exception:
+        pass
     time.sleep(1)
+
+def validate_sheet_schema(sheet_name, rows_or_df):
+    schema = SHEET_SCHEMAS.get(sheet_name) if 'SHEET_SCHEMAS' in globals() else None
+    if not schema:
+        return
+    if isinstance(rows_or_df, pd.DataFrame):
+        actual_cols = set(rows_or_df.columns)
+    else:
+        actual_cols = set(rows_or_df[0].keys()) if rows_or_df else set()
+    missing_required = [c for c in schema['required'] if c not in actual_cols]
+    missing_recommended = [c for c in schema['recommended'] if c not in actual_cols]
+    if missing_required:
+        msg = f"{sheet_name} missing REQUIRED columns: {missing_required}"
+        print(f"   ❌ SCHEMA VIOLATION: {msg}")
+        try:
+            runlog.warn(msg)
+        except Exception:
+            pass
+        raise RuntimeError(f"Schema validation failed for {sheet_name}: missing required {missing_required}")
+    if missing_recommended:
+        msg = f"{sheet_name} missing recommended columns: {missing_recommended}"
+        print(f"   ⚠️ SCHEMA WARNING: {msg}")
+        try:
+            runlog.warn(msg)
+        except Exception:
+            pass
 
 def normalize_date(val):
     """Convert any date format to ISO for consistent comparison.
@@ -388,6 +448,10 @@ def build_consensus_pick_pool(pick_lists):
     return merged
 
 def append_upload(sheet_name, df):
+    if df is None or len(df) == 0:
+        print(f"⏭️ Skipping append '{sheet_name}' — no data.")
+        return
+    validate_sheet_schema(sheet_name, df)
     try:
         try:
             ws = wb.worksheet(sheet_name)
@@ -421,6 +485,10 @@ def append_upload(sheet_name, df):
                 ws.append_rows(cleaned, value_input_option='RAW')
 
         print(f"✅ Appended {len(df)} rows to '{sheet_name}'")
+        try:
+            runlog.record_write(sheet_name, len(df))
+        except Exception:
+            pass
     except Exception as e:
         print(f"❌ FAILED append '{sheet_name}': {e}")
 
@@ -1871,6 +1939,10 @@ safe_upload("DK_Player_Props", all_props)
 if new_boxscore_cache_rows:
     append_upload("Boxscore_Cache", pd.DataFrame(new_boxscore_cache_rows))
 if daily_picks:
+    try:
+        runlog.picks_generated = len(daily_picks)
+    except Exception:
+        pass
     append_upload("Daily_Picks", pd.DataFrame(daily_picks))
 
 # ═══════════════════════════════════════════════

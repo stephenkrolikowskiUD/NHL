@@ -5,12 +5,14 @@ import requests
 import time, re, math
 import unicodedata
 import os, json
+import atexit
 from datetime import datetime, timedelta
 from itertools import combinations
 import pytz
 import gspread
 from google.auth import default
 from google.oauth2.service_account import Credentials
+from run_logger import RunLogger
 
 def get_gspread_client():
     scopes = [
@@ -39,6 +41,8 @@ NHL_API = "https://api-web.nhle.com/v1"
 SNAPSHOT_DATE = "2026-05-04"
 sh = gc.open_by_key(SHEET_KEY)
 print(f"✅ Connected to Google Sheet: {SHEET_KEY}")
+runlog = RunLogger(gc, SHEET_KEY, sport='NHL', kind='grader')
+atexit.register(runlog.finalize_and_write)
 
 eastern = pytz.timezone('US/Eastern')
 now_est = datetime.now(eastern)
@@ -263,21 +267,27 @@ else:
 
 # --- 3. FIND UNGRADED PICKS ---
 hit_series = df_picks['HIT'].fillna('').astype(str).str.strip()
-ungraded = df_picks[hit_series == ''].copy()
+date_series = pd.to_datetime(df_picks['DATE'], errors='coerce')
+today_ts = pd.to_datetime(today_str)
+retry_cutoff = today_ts - pd.Timedelta(days=RETRY_DNP_LOOKBACK_DAYS)
+retry_dnp_mask = (hit_series == 'DNP') & date_series.notna() & (date_series >= retry_cutoff) & (date_series <= today_ts)
+blank_ungraded_mask = (hit_series == '') & date_series.notna() & (date_series < today_ts)
+ungraded = df_picks[blank_ungraded_mask | retry_dnp_mask].copy()
 
 if ungraded.empty:
-    print("✅ All picks are already graded! Nothing to do.")
-    dates_to_grade = []
-
-# Only grade picks from completed dates (not today)
-ungraded = ungraded[ungraded['DATE'] < today_str]
-
-if ungraded.empty:
-    print(f"⏳ All ungraded picks are from today ({today_str}) — games haven't finished yet. Run tomorrow.")
+    blanks_today = int(((hit_series == '') & date_series.notna() & (date_series >= today_ts)).sum())
+    if blanks_today > 0:
+        print(f"⏳ {blanks_today} ungraded picks from today ({today_str}) — games haven't finished yet. Run tomorrow.")
+    else:
+        print("✅ All picks are already graded! Nothing to do.")
     dates_to_grade = []
 else:
     dates_to_grade = sorted(ungraded['DATE'].unique())
-    print(f"🎯 {len(ungraded)} gradeable picks from: {', '.join(dates_to_grade)}")
+    retry_ct = int(retry_dnp_mask.sum())
+    if retry_ct > 0:
+        print(f"🎯 {len(ungraded)} gradeable picks from: {', '.join(dates_to_grade)} ({retry_ct} recent DNP retries)")
+    else:
+        print(f"🎯 {len(ungraded)} gradeable picks from: {', '.join(dates_to_grade)}")
 
 # --- 4. BUILD BOX SCORE LOOKUP ---
 print("\nFetching box score data...")
@@ -637,6 +647,11 @@ else:
 # --- 7. SUMMARY ---
 total_decided = hits + misses
 hit_rate = (hits / total_decided * 100) if total_decided > 0 else 0
+runlog.hits = hits
+runlog.misses = misses
+runlog.dnp_count = dnp
+runlog.not_found_count = not_found
+runlog.picks_graded = hits + misses
 
 print("\n" + "=" * 60)
 print("📊 GRADING COMPLETE")
