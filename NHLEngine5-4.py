@@ -1849,23 +1849,22 @@ RULES:
 - CRITICAL: ONLY pick players from the data above. Do NOT include any player not in the list.
 - Return EXACTLY 10 ranked picks as a JSON array
 - Confidence tiers: SMASH (top 3-4 highest conviction only), STRONG (next 4-5), LEAN (rest)
+- STRONG should require multiple confirming signals: positive EV, strong hit rate, and supportive matchup/split context. If only one signal is strong, use LEAN instead.
 - Players flagged RETURNING have depressed lines due to injury/absence. Their season averages are NOT reliable short-term predictors. Treat with extreme caution — do NOT SMASH these players.
 - STAR players are the top 20 by season UD fantasy points in tonight's valid prop pool.
 - Prefer at least 4 of your 10 picks to come from STAR players. Non-stars should fill the remaining slots only when they have exceptional edges or matchup context.
 - Available prop types: PTS, G, SOG, PPP, HITS, SV
-- Do NOT pick A (assists) — 36% cumulative hit rate, confirmed loser across NHL and NBA
-- Do NOT pick BLK (blocks) — 25% cumulative hit rate, confirmed loser
+- Do NOT pick A (assists) — observed ~36% NHL hit rate.
+- Do NOT pick BLK (blocks) — observed ~25% NHL hit rate.
 - Do NOT pick UD_FP or any fantasy-points metric — these are not pickable props
 - Skaters can only get skater props. Goalies can only get goalie props (SV).
 - DIVERSIFY prop types: max 3 picks of the same prop type per slate.
-- Cap A props at 1 per slate.
-- Cap BLK props at 1 per slate.
 - Max 3 goalie props per slate.
 - Include 1 goalie saves (SV) pick per slate when a high-total game suggests more shots and the listed goalie context supports volume.
 - Use DK lines when available; otherwise use L5 average. NEVER return null for line.
 - When listed prop signals show strong hit rate and positive EV, give those props more weight.
 - SOG (53%) is the best high-volume prop. Prioritize it.
-- UNDER props are hitting 65% — actively look for UNDER opportunities on overlined players.
+- Evaluate UNDER opportunities on overlined players when the listed prop signals support it. Do not force UNDERs without an EV / hit-rate edge.
 - A and BLK are blacklisted (see above). Do not pick these under any circumstances.
 
 For each pick:
@@ -1873,6 +1872,7 @@ For each pick:
 - player (exact name from data)
 - team (abbreviation)
 - game (e.g. "TOR @ BOS")
+- prop_type (must be one of: PTS, G, SOG, PPP, HITS, SV)
 - line (the DK line number, or your projected number if no prop)
 - lean (OVER or UNDER)
 - confidence (SMASH, STRONG, or LEAN)
