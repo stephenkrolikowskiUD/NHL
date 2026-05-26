@@ -23,6 +23,7 @@ import atexit
 from datetime import datetime, date, timedelta
 from collections import defaultdict
 import pandas as pd
+import numpy as np
 from google.oauth2.service_account import Credentials
 from run_logger import RunLogger
 
@@ -74,6 +75,13 @@ SHEET_SCHEMAS = {
     },
     'DK_Player_Props': {
         'required': ['PLAYER_NAME', 'METRIC', 'DK_LINE', 'OVER_ODDS', 'UNDER_ODDS'],
+        'recommended': ['BOOK', 'REFERENCE_BOOK', 'BEST_OVER_BOOK', 'BEST_OVER_ODDS', 'BEST_OVER_DELTA_PP',
+                        'BEST_UNDER_BOOK', 'BEST_UNDER_ODDS', 'BEST_UNDER_DELTA_PP',
+                        'ALT_LINE_AVAILABLE', 'ALT_LINE_BOOKS', 'LAST_UPDATED'],
+    },
+    'All_Books_Props': {
+        'required': ['PLAYER_NAME', 'METRIC', 'LINE', 'BOOK', 'OVER_ODDS', 'UNDER_ODDS',
+                     'OVER_IMPLIED', 'UNDER_IMPLIED', 'LAST_UPDATED'],
         'recommended': [],
     },
     'Skater_Game_Logs': {
@@ -1223,187 +1231,346 @@ except Exception as e:
     odds_data = []
 
 # ═══════════════════════════════════════════════
-# 🎲 STEP 7: ODDS API — PLAYER PROPS
-# ═══════════════════════════════════════════════
-print("\n🎲 Fetching player props...")
-# NHL prop markets — batch into groups of 5 (API limit)
-PROP_MARKETS = [
-    ["player_points", "player_assists", "player_goals", "player_shots_on_goal", "player_blocked_shots"],
-    ["player_power_play_points", "player_total_saves"],
+# MULTI-BOOK PLAYER PROPS
+print("\nFetching Multi-Book Player Props...")
+SPORT = SPORT_KEY
+BOOKMAKER = 'draftkings'
+PROP_BOOKMAKER = 'draftkings'
+FALLBACK_BOOKMAKER = 'fanduel'
+THIN_MARKET_THRESHOLD = 5
+SUPPORTED_BOOKMAKERS = ['draftkings', 'fanduel', 'betmgm', 'caesars', 'espnbet']
+REFERENCE_BOOKMAKER = 'draftkings'
+BEST_BOOK_TIE_BREAK = 'alpha'
+
+MARKET_BATCHES = [
+    ['player_points', 'player_assists', 'player_goals', 'player_shots_on_goal', 'player_blocked_shots'],
+    ['player_power_play_points', 'player_total_saves'],
+]
+PROP_MARKETS = MARKET_BATCHES
+
+market_mapping = {
+    'player_points': 'PTS',
+    'player_goals': 'G',
+    'player_assists': 'A',
+    'player_shots_on_goal': 'SOG',
+    'player_blocked_shots': 'BLK',
+    'player_power_play_points': 'PPP',
+    'player_total_saves': 'SV',
+}
+MARKET_TO_METRIC = market_mapping
+
+BINARY_PROP_MARKETS = {}
+name_fixes = {}
+DK_PLAYER_PROPS_COLUMNS = [
+    'PLAYER_NAME', 'METRIC', 'DK_LINE', 'OVER_ODDS', 'UNDER_ODDS', 'BOOK',
+    'REFERENCE_BOOK', 'BEST_OVER_BOOK', 'BEST_OVER_ODDS', 'BEST_OVER_DELTA_PP',
+    'BEST_UNDER_BOOK', 'BEST_UNDER_ODDS', 'BEST_UNDER_DELTA_PP',
+    'ALT_LINE_AVAILABLE', 'ALT_LINE_BOOKS', 'LAST_UPDATED'
+]
+ALL_BOOKS_PROPS_COLUMNS = [
+    'PLAYER_NAME', 'METRIC', 'LINE', 'BOOK', 'OVER_ODDS', 'UNDER_ODDS',
+    'OVER_IMPLIED', 'UNDER_IMPLIED', 'LAST_UPDATED'
 ]
 
-MARKET_TO_METRIC = {
-    "player_points": "PTS",
-    "player_goals": "G",
-    "player_assists": "A",
-    "player_shots_on_goal": "SOG",
-    "player_blocked_shots": "BLK",
-    "player_power_play_points": "PPP",
-    "player_total_saves": "SV",
-}
 
-all_props = []
-thin_market_threshold = 5
+def american_to_implied(odds):
+    try:
+        if odds is None or pd.isna(odds):
+            return np.nan
+        if isinstance(odds, str) and odds.strip().lower() in {'', 'nan', 'none'}:
+            return np.nan
+        odds = float(odds)
+        if odds == 0:
+            return np.nan
+        return (-odds / (-odds + 100)) if odds < 0 else (100 / (odds + 100))
+    except (TypeError, ValueError):
+        return np.nan
 
-# Get events list first
-print("  Fetching events list...")
-try:
-    events_r = requests.get(f"{ODDS_BASE}/sports/{SPORT_KEY}/events", params={"apiKey": ODDS_API_KEY}, timeout=15)
-    events = events_r.json() if events_r.status_code == 200 else []
-except Exception as e:
-    print(f"  ⚠️ Events fetch error: {e}")
-    events = []
 
-scheduled_event_keys = {(gp.get("away", ""), gp.get("home", "")) for gp in game_pairs if gp.get("away") and gp.get("home")}
-today_events = []
-for e in events:
-    away_abbr = NHL_NAME_TO_ABBR.get(str(e.get("away_team", "")).strip(), "")
-    home_abbr = NHL_NAME_TO_ABBR.get(str(e.get("home_team", "")).strip(), "")
-    pair_key = (away_abbr, home_abbr)
-    if pair_key in scheduled_event_keys:
-        today_events.append(e)
-if not today_events:
-    today_events = [e for e in events if e.get("commence_time", "")[:10] == TODAY]
-    print(f"  {len(today_events)} events today (UTC-date fallback)")
-else:
-    print(f"  {len(today_events)} events matched to tonight's schedule")
+def implied_to_american(prob):
+    try:
+        prob = float(prob)
+        if prob <= 0 or prob >= 1:
+            return None
+        return int(round(-100 * prob / (1 - prob))) if prob >= 0.5 else int(round(100 * (1 - prob) / prob))
+    except (TypeError, ValueError):
+        return None
 
-for event in today_events:
-    eid = event["id"]
-    for batch in PROP_MARKETS:
-        try:
-            r = requests.get(f"{ODDS_BASE}/sports/{SPORT_KEY}/events/{eid}/odds", params={
-                "apiKey": ODDS_API_KEY,
-                "regions": "us",
-                "markets": ",".join(batch),
-                "bookmakers": "draftkings",
-                "oddsFormat": "american",
-            }, timeout=15)
-            if r.status_code != 200:
-                continue
-            data = r.json()
-        except Exception as e:
-            print(f"  ⚠️ Props error: {e}")
+
+def apply_multi_book_name_fixes(df, name_fixes):
+    if df is None or df.empty or 'PLAYER_NAME' not in df.columns:
+        return df
+    out = df.copy()
+    out['PLAYER_NAME'] = out['PLAYER_NAME'].replace(name_fixes or {})
+    return out
+
+
+def parse_multi_book_market(mkt, metric_name, book_key, binary_prop_markets=None):
+    rows_by_key = {}
+    market_key = mkt.get('key', '')
+    binary_prop_markets = binary_prop_markets or {}
+    for oc in mkt.get('outcomes', []):
+        player_name = oc.get('description') or oc.get('participant') or oc.get('player') or ''
+        bet_type = str(oc.get('name', '')).strip()
+        line_val = oc.get('point')
+        odds_val = oc.get('price')
+        if not player_name or odds_val is None:
             continue
+        if line_val is None and market_key in binary_prop_markets:
+            line_val = binary_prop_markets[market_key]
+        if line_val is None:
+            continue
+        try:
+            line_val = float(line_val)
+        except (TypeError, ValueError):
+            continue
+        key = (player_name, metric_name, line_val, book_key)
+        if key not in rows_by_key:
+            rows_by_key[key] = {
+                'PLAYER_NAME': player_name,
+                'METRIC': metric_name,
+                'LINE': line_val,
+                'BOOK': book_key,
+                'OVER_ODDS': np.nan,
+                'UNDER_ODDS': np.nan,
+            }
+        if bet_type in {'Over', 'Yes'}:
+            rows_by_key[key]['OVER_ODDS'] = odds_val
+        elif bet_type in {'Under', 'No'}:
+            rows_by_key[key]['UNDER_ODDS'] = odds_val
+    return list(rows_by_key.values())
 
-        for bm in data.get("bookmakers", []):
-            is_dk = "draftkings" in bm.get("key", "").lower()
-            for mkt in bm.get("markets", []):
-                metric = MARKET_TO_METRIC.get(mkt["key"])
-                if not metric:
-                    continue
-                outcomes = mkt.get("outcomes", [])
-                # Group by player (description field)
-                player_outcomes = defaultdict(dict)
-                for o in outcomes:
-                    pname = o.get("description", "")
-                    if not pname:
-                        continue
-                    if o["name"] == "Over":
-                        player_outcomes[pname]["over_odds"] = o.get("price")
-                        player_outcomes[pname]["line"] = o.get("point")
-                    elif o["name"] == "Under":
-                        player_outcomes[pname]["under_odds"] = o.get("price")
-                        player_outcomes[pname]["line"] = o.get("point")
 
-                for pname, vals in player_outcomes.items():
-                    # Check if already have from DK
-                    existing = [p for p in all_props if p["PLAYER_NAME"] == pname and p["METRIC"] == metric]
-                    if existing and not is_dk:
-                        continue
-                    if existing and is_dk:
-                        all_props.remove(existing[0])
-                    all_props.append({
-                        "PLAYER_NAME": pname,
-                        "METRIC": metric,
-                        "DK_LINE": vals.get("line", ""),
-                        "OVER_ODDS": vals.get("over_odds", ""),
-                        "UNDER_ODDS": vals.get("under_odds", ""),
-                        "BOOK": bm.get("key", ""),
-                    })
-        time.sleep(0.5)
+def finalize_all_books_frame(rows, timestamp_value, name_fixes=None):
+    if not rows:
+        return pd.DataFrame(columns=ALL_BOOKS_PROPS_COLUMNS)
+    df = pd.DataFrame(rows)
+    df = df[df['BOOK'].isin(SUPPORTED_BOOKMAKERS)].copy()
+    df = apply_multi_book_name_fixes(df, name_fixes or {})
+    df['LINE'] = pd.to_numeric(df['LINE'], errors='coerce')
+    df['OVER_ODDS'] = pd.to_numeric(df['OVER_ODDS'], errors='coerce')
+    df['UNDER_ODDS'] = pd.to_numeric(df['UNDER_ODDS'], errors='coerce')
+    df = df.dropna(subset=['PLAYER_NAME', 'METRIC', 'LINE', 'BOOK'])
+    df['OVER_IMPLIED'] = df['OVER_ODDS'].map(american_to_implied).round(4)
+    df['UNDER_IMPLIED'] = df['UNDER_ODDS'].map(american_to_implied).round(4)
+    df['LAST_UPDATED'] = timestamp_value
+    df = df.drop_duplicates(subset=['PLAYER_NAME', 'METRIC', 'LINE', 'BOOK'], keep='first')
+    return df.reindex(columns=ALL_BOOKS_PROPS_COLUMNS).sort_values(['METRIC', 'PLAYER_NAME', 'LINE', 'BOOK']).reset_index(drop=True)
 
-print(f"  ✅ {len(all_props)} player props fetched")
-metric_counts = pd.Series([p.get("METRIC") for p in all_props if p.get("METRIC")]).value_counts().to_dict() if all_props else {}
-thin_metrics = sorted([metric for metric in MARKET_TO_METRIC.values() if metric_counts.get(metric, 0) < thin_market_threshold])
-if thin_metrics:
-    print(f"  🔄 FanDuel fallback for thin/missing markets: {', '.join(thin_metrics)}")
-    fd_props = []
-    for event in today_events:
-        eid = event["id"]
-        for batch in PROP_MARKETS:
-            batch_markets = [market for market in batch if MARKET_TO_METRIC.get(market) in thin_metrics]
-            if not batch_markets:
-                continue
+
+def _select_best_book(same_line, odds_col):
+    available = same_line.dropna(subset=[odds_col]).copy()
+    if available.empty:
+        return None, np.nan, np.nan, []
+    available[odds_col] = pd.to_numeric(available[odds_col], errors='coerce')
+    available = available.dropna(subset=[odds_col])
+    if available.empty:
+        return None, np.nan, np.nan, []
+    best_odds = available[odds_col].max()
+    tied = sorted(available[available[odds_col] == best_odds]['BOOK'].astype(str).unique())
+    best_book = tied[0] if tied else None
+    best_implied = american_to_implied(best_odds)
+    return best_book, best_odds, best_implied, tied
+
+
+def compute_best_book_columns(df_long, timestamp_value):
+    if df_long is None or df_long.empty:
+        return pd.DataFrame(columns=DK_PLAYER_PROPS_COLUMNS), []
+    df = df_long.copy()
+    df['LINE'] = pd.to_numeric(df['LINE'], errors='coerce')
+    df['OVER_ODDS'] = pd.to_numeric(df['OVER_ODDS'], errors='coerce')
+    df['UNDER_ODDS'] = pd.to_numeric(df['UNDER_ODDS'], errors='coerce')
+    df = df.dropna(subset=['PLAYER_NAME', 'METRIC', 'LINE', 'BOOK'])
+    if df.empty:
+        return pd.DataFrame(columns=DK_PLAYER_PROPS_COLUMNS), []
+
+    metric_book_coverage = (
+        df.groupby(['METRIC', 'BOOK'])['PLAYER_NAME']
+        .nunique()
+        .reset_index(name='coverage')
+        .sort_values(['METRIC', 'coverage', 'BOOK'], ascending=[True, False, True])
+    )
+    coverage_lookup = {
+        metric: grp.iloc[0]['BOOK']
+        for metric, grp in metric_book_coverage.groupby('METRIC')
+        if not grp.empty
+    }
+
+    rows = []
+    tie_notes = []
+    for (player, metric), grp in df.groupby(['PLAYER_NAME', 'METRIC'], sort=True):
+        dk_rows = grp[grp['BOOK'] == REFERENCE_BOOKMAKER].sort_values(['LINE', 'BOOK'])
+        if not dk_rows.empty:
+            ref = dk_rows.iloc[0]
+            reference_book = REFERENCE_BOOKMAKER
+        else:
+            reference_book = coverage_lookup.get(metric) or sorted(grp['BOOK'].astype(str).unique())[0]
+            ref_rows = grp[grp['BOOK'] == reference_book].sort_values(['LINE', 'BOOK'])
+            if ref_rows.empty:
+                ref_rows = grp.sort_values(['BOOK', 'LINE'])
+                reference_book = ref_rows.iloc[0]['BOOK']
+            ref = ref_rows.iloc[0]
+
+        ref_line = float(ref['LINE'])
+        same_line = grp[grp['LINE'].sub(ref_line).abs() < 1e-9].copy()
+        alt_line_books = sorted(grp[grp['LINE'].sub(ref_line).abs() >= 1e-9]['BOOK'].astype(str).unique())
+        best_over_book, best_over_odds, best_over_implied, over_ties = _select_best_book(same_line, 'OVER_ODDS')
+        best_under_book, best_under_odds, best_under_implied, under_ties = _select_best_book(same_line, 'UNDER_ODDS')
+        if len(over_ties) > 1:
+            tie_notes.append(f"{player} {metric} OVER tied: {', '.join(over_ties)}")
+        if len(under_ties) > 1:
+            tie_notes.append(f"{player} {metric} UNDER tied: {', '.join(under_ties)}")
+
+        ref_over_implied = american_to_implied(ref.get('OVER_ODDS'))
+        ref_under_implied = american_to_implied(ref.get('UNDER_ODDS'))
+        over_delta = (ref_over_implied - best_over_implied) * 100 if pd.notna(ref_over_implied) and pd.notna(best_over_implied) else np.nan
+        under_delta = (ref_under_implied - best_under_implied) * 100 if pd.notna(ref_under_implied) and pd.notna(best_under_implied) else np.nan
+
+        rows.append({
+            'PLAYER_NAME': player,
+            'METRIC': metric,
+            'DK_LINE': ref_line,
+            'OVER_ODDS': ref.get('OVER_ODDS'),
+            'UNDER_ODDS': ref.get('UNDER_ODDS'),
+            'BOOK': ref.get('BOOK'),
+            'REFERENCE_BOOK': reference_book,
+            'BEST_OVER_BOOK': best_over_book,
+            'BEST_OVER_ODDS': best_over_odds,
+            'BEST_OVER_DELTA_PP': round(over_delta, 3) if pd.notna(over_delta) else np.nan,
+            'BEST_UNDER_BOOK': best_under_book,
+            'BEST_UNDER_ODDS': best_under_odds,
+            'BEST_UNDER_DELTA_PP': round(under_delta, 3) if pd.notna(under_delta) else np.nan,
+            'ALT_LINE_AVAILABLE': bool(alt_line_books),
+            'ALT_LINE_BOOKS': ','.join(alt_line_books),
+            'LAST_UPDATED': timestamp_value,
+        })
+
+    df_props_out = pd.DataFrame(rows, columns=DK_PLAYER_PROPS_COLUMNS)
+    if not df_props_out.empty:
+        df_props_out = df_props_out.sort_values(['METRIC', 'PLAYER_NAME']).reset_index(drop=True)
+    return df_props_out, tie_notes
+
+
+def print_best_book_summary(df_props, df_all_books):
+    print("\n" + "=" * 60)
+    print("BEST-BOOK ROUTING SUMMARY")
+    print("=" * 60)
+    print(f"   Books queried:    {', '.join(SUPPORTED_BOOKMAKERS)}")
+    if df_all_books is None or df_all_books.empty or df_props is None or df_props.empty:
+        print("   Props covered:    0 unique (player, metric) pairs")
+        print("=" * 60)
+        return
+    covered = len(df_props)
+    dk_ref = int((df_props['REFERENCE_BOOK'] == REFERENCE_BOOKMAKER).sum()) if 'REFERENCE_BOOK' in df_props.columns else 0
+    dk_pct = (dk_ref / covered * 100) if covered else 0
+    print(f"   Props covered:    {covered} unique (player, metric) pairs")
+    print(f"   DK reference:     {dk_ref} / {covered} ({dk_pct:.1f}%)")
+    print("   Best-book wins by:")
+    for book in SUPPORTED_BOOKMAKERS:
+        over_ct = int((df_props.get('BEST_OVER_BOOK') == book).sum()) if 'BEST_OVER_BOOK' in df_props.columns else 0
+        under_ct = int((df_props.get('BEST_UNDER_BOOK') == book).sum()) if 'BEST_UNDER_BOOK' in df_props.columns else 0
+        print(f"      {book:<12} {over_ct:>4} OVER  / {under_ct:>4} UNDER")
+    over_edge = pd.to_numeric(df_props.get('BEST_OVER_DELTA_PP'), errors='coerce').dropna()
+    under_edge = pd.to_numeric(df_props.get('BEST_UNDER_DELTA_PP'), errors='coerce').dropna()
+    over_avg = over_edge.mean() if not over_edge.empty else 0
+    under_avg = under_edge.mean() if not under_edge.empty else 0
+    alt_ct = int(df_props.get('ALT_LINE_AVAILABLE', pd.Series(dtype=bool)).fillna(False).astype(bool).sum()) if 'ALT_LINE_AVAILABLE' in df_props.columns else 0
+    print(f"   Avg edge captured: +{over_avg:.1f}pp OVER, +{under_avg:.1f}pp UNDER (vs reference)")
+    print(f"   Alt lines available: {alt_ct} props")
+    print("=" * 60)
+
+
+df_props = pd.DataFrame(columns=DK_PLAYER_PROPS_COLUMNS)
+df_all_books = pd.DataFrame(columns=ALL_BOOKS_PROPS_COLUMNS)
+all_props = []
+try:
+    events_r = requests.get(f"{ODDS_BASE}/sports/{SPORT}/events", params={'apiKey': ODDS_API_KEY}, timeout=15)
+    ev_data = events_r.json() if events_r.status_code == 200 else []
+    if events_r.status_code != 200:
+        print(f"  ❌ Failed to fetch events: {events_r.status_code} — {events_r.text[:200]}")
+    scheduled_event_keys = {(gp.get('away', ''), gp.get('home', '')) for gp in game_pairs if gp.get('away') and gp.get('home')}
+    matched_events = []
+    for e in ev_data:
+        away_abbr = NHL_NAME_TO_ABBR.get(str(e.get('away_team', '')).strip(), '')
+        home_abbr = NHL_NAME_TO_ABBR.get(str(e.get('home_team', '')).strip(), '')
+        if (away_abbr, home_abbr) in scheduled_event_keys:
+            matched_events.append(e)
+    if not matched_events:
+        matched_events = [e for e in ev_data if e.get('commence_time', '')[:10] == TODAY]
+        print(f"  {len(matched_events)} events today (UTC-date fallback)")
+    else:
+        print(f"  {len(matched_events)} events matched to tonight's schedule")
+
+    all_book_rows = []
+    api_errors = 0
+    last_resp = None
+    for event in matched_events:
+        eid = event['id']
+        for batch in MARKET_BATCHES:
+            markets_param = ','.join(batch) if isinstance(batch, list) else batch
             try:
-                r = requests.get(f"{ODDS_BASE}/sports/{SPORT_KEY}/events/{eid}/odds", params={
-                    "apiKey": ODDS_API_KEY,
-                    "regions": "us",
-                    "markets": ",".join(batch_markets),
-                    "bookmakers": "fanduel",
-                    "oddsFormat": "american",
+                r = requests.get(f"{ODDS_BASE}/sports/{SPORT}/events/{eid}/odds", params={
+                    'apiKey': ODDS_API_KEY,
+                    'regions': 'us',
+                    'markets': markets_param,
+                    'bookmakers': ','.join(SUPPORTED_BOOKMAKERS),
+                    'oddsFormat': 'american',
                 }, timeout=15)
+                last_resp = r
                 if r.status_code != 200:
+                    if api_errors < 3:
+                        print(f"  ⚠️ Props API {r.status_code} for event {eid}: {r.text[:100]}")
+                    api_errors += 1
+                    if api_errors > 5:
+                        print("  ⚠️ More than 5 props API errors — continuing with partial data")
                     continue
                 data = r.json()
-            except Exception:
+            except Exception as e:
+                print(f"  ⚠️ Props error: {e}")
                 continue
-            for bm in data.get("bookmakers", []):
-                if "fanduel" not in bm.get("key", "").lower():
+            for bm in data.get('bookmakers', []):
+                book_key = bm.get('key', '')
+                if book_key not in SUPPORTED_BOOKMAKERS:
                     continue
-                for mkt in bm.get("markets", []):
-                    metric = MARKET_TO_METRIC.get(mkt["key"])
-                    if not metric or metric not in thin_metrics:
+                for mkt in bm.get('markets', []):
+                    metric = market_mapping.get(mkt.get('key'))
+                    if not metric:
                         continue
-                    player_outcomes = defaultdict(dict)
-                    for o in mkt.get("outcomes", []):
-                        pname = o.get("description", "")
-                        if not pname:
-                            continue
-                        if o["name"] == "Over":
-                            player_outcomes[pname]["over_odds"] = o.get("price")
-                            player_outcomes[pname]["line"] = o.get("point")
-                        elif o["name"] == "Under":
-                            player_outcomes[pname]["under_odds"] = o.get("price")
-                            player_outcomes[pname]["line"] = o.get("point")
-                    for pname, vals in player_outcomes.items():
-                        existing = [p for p in all_props if p["PLAYER_NAME"] == pname and p["METRIC"] == metric]
-                        if existing:
-                            continue
-                        fd_props.append({
-                            "PLAYER_NAME": pname,
-                            "METRIC": metric,
-                            "DK_LINE": vals.get("line", ""),
-                            "OVER_ODDS": vals.get("over_odds", ""),
-                            "UNDER_ODDS": vals.get("under_odds", ""),
-                            "BOOK": "fanduel",
-                        })
-            time.sleep(0.5)
-    if fd_props:
-        all_props.extend(fd_props)
-        fd_goalie_count = sum(1 for prop in fd_props if prop.get("METRIC") in {"SV"})
-        fd_skater_count = len(fd_props) - fd_goalie_count
-        print(f"  ✅ FanDuel added {len(fd_props)} props")
-        print(f"     Goalie props added: {fd_goalie_count}")
-        print(f"     Skater props added: {fd_skater_count}")
+                    all_book_rows.extend(parse_multi_book_market(mkt, metric, book_key, BINARY_PROP_MARKETS))
+        time.sleep(0.5)
+
+    timestamp_props = datetime.now().strftime('%Y-%m-%d %I:%M %p EST')
+    df_all_books = finalize_all_books_frame(all_book_rows, timestamp_props, name_fixes)
+    if last_resp is not None and hasattr(last_resp, 'headers'):
+        print(f"  📊 API quota remaining: {last_resp.headers.get('x-requests-remaining', '?')}")
+    if api_errors:
+        print(f"  ⚠️ Total props API errors: {api_errors}")
+    for book in SUPPORTED_BOOKMAKERS:
+        book_ct = 0 if df_all_books.empty else int((df_all_books['BOOK'] == book).sum())
+        if book_ct == 0:
+            print(f"  {book}: 0 props")
+    df_props, tie_notes = compute_best_book_columns(df_all_books, timestamp_props)
+    for note in tie_notes[:10]:
+        print(f"  ℹ️ Best-book tie: {note}")
+    if len(tie_notes) > 10:
+        print(f"  ℹ️ Best-book ties suppressed: {len(tie_notes) - 10} more")
+    all_props = df_props.to_dict('records') if not df_props.empty else []
+    if all_props:
+        print(f"  ✅ {len(all_props)} reference props fetched across {df_props['METRIC'].nunique()} markets")
+        print(f"  ✅ All_Books_Props rows: {len(df_all_books)} across {df_all_books['BOOK'].nunique()} books")
+        goalie_count = int((df_props['METRIC'] == 'SV').sum())
+        if goalie_count:
+            print(f"  🥅 Goalie props fetched — SV:{goalie_count}")
     else:
-        print("  ⚠️ FanDuel had no data for thin/missing NHL markets either")
-if all_props:
-    goalie_metric_counts = defaultdict(int)
-    goalie_prop_names = []
-    for prop in all_props:
-        if prop.get("METRIC") in {"SV"}:
-            goalie_metric_counts[prop.get("METRIC")] += 1
-            if prop.get("PLAYER_NAME"):
-                goalie_prop_names.append(prop.get("PLAYER_NAME"))
-    if goalie_metric_counts:
-        goalie_bits = ", ".join(f"{metric}:{count}" for metric, count in sorted(goalie_metric_counts.items()))
-        print(f"  🥅 Goalie props fetched — {goalie_bits}")
-        unique_goalie_prop_names = sorted(set(goalie_prop_names))
-        if unique_goalie_prop_names:
-            print(f"  🥅 Raw goalie prop names: {', '.join(unique_goalie_prop_names[:12])}" + (" ..." if len(unique_goalie_prop_names) > 12 else ""))
-    else:
-        print("  🥅 No goalie props returned by the books yet")
+        print("  ⚠️ No player props returned.")
+    metric_counts = pd.Series([p.get('METRIC') for p in all_props if p.get('METRIC')]).value_counts().to_dict() if all_props else {}
+    thin_metrics = sorted([metric for metric in set(market_mapping.values()) if metric_counts.get(metric, 0) < THIN_MARKET_THRESHOLD])
+    if thin_metrics:
+        print(f"  ⚠️ Thin/missing markets after multi-book fetch: {', '.join(thin_metrics)}")
+    print_best_book_summary(df_props, df_all_books)
+except Exception as e:
+    print(f"  ❌ Failed to fetch player props: {e}")
+
 
 # ═══════════════════════════════════════════════
 # 🤖 STEP 8: GEMINI AI PICKS (v1.2: new google-genai SDK)
@@ -1936,6 +2103,7 @@ safe_upload("Tonights_Goalies", goalie_tonight)
 safe_upload("Goalie_Game_Logs", goalie_logs)
 safe_upload("Goalie_Home_Away", goalie_splits)
 safe_upload("DK_Player_Props", all_props)
+safe_upload("All_Books_Props", df_all_books.to_dict('records') if not df_all_books.empty else [])
 if new_boxscore_cache_rows:
     append_upload("Boxscore_Cache", pd.DataFrame(new_boxscore_cache_rows))
 if daily_picks:
@@ -1958,6 +2126,7 @@ print(f"  🏒 Skaters: {len(skater_tonight)} with logs")
 print(f"  🧱 Goalies: {len(goalie_tonight)} with logs")
 print(f"  📊 Game log rows: {len(skater_logs) + len(goalie_logs)}")
 print(f"  🎲 Props: {len(all_props)}")
+print(f"  🏪 All Books Props: {len(df_all_books)} rows across {df_all_books['BOOK'].nunique() if not df_all_books.empty else 0} books")
 print(f"  🤖 AI Picks: {len(daily_picks)}")
 print(f"  📝 Google Sheet: {SHEET_ID}")
 print(f"{'='*50}")
