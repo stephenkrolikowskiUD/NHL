@@ -1866,7 +1866,7 @@ RULES:
 - Use DK lines when available; otherwise use L5 average. NEVER return null for line.
 - When listed prop signals show strong hit rate and positive EV, give those props more weight.
 - SOG (53%) is the best high-volume prop. Prioritize it.
-- Evaluate UNDER opportunities on overlined players when the listed prop signals support it. Do not force UNDERs without an EV / hit-rate edge.
+- UNDER props are strong in NHL (observed ~62% hit rate, n=29). Actively evaluate UNDER opportunities on overlined skaters and goalies. Soft target: 2-4 UNDERs per 10-pick slate.
 - A and BLK are blacklisted (see above). Do not pick these under any circumstances.
 
 For each pick:
