@@ -18,7 +18,7 @@ Sheets written:
 # Install cell — run this first, then restart runtime
 # !pip install google-genai gspread google-auth requests pandas
 
-import requests, json, time, re, math, unicodedata, os
+import requests, json, time, re, math, unicodedata, os, sys
 import atexit
 from datetime import datetime, date, timedelta
 from collections import defaultdict
@@ -98,6 +98,52 @@ NHL_STATS = "https://api.nhle.com/stats/rest/en"
 # Odds API
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 SPORT_KEY = "icehockey_nhl"
+SPORT_LABEL = "NHL"
+
+# --- Odds API quota guard ---
+QUOTA_FLOOR_GLOBAL = 2000
+QUOTA_FLOOR_THIS_SPORT = {
+    "MLB": 1000,
+    "NBA": 800,
+    "NHL": 600,
+    "WNBA": 500,
+    "WC": 600,
+}[SPORT_LABEL]
+CACHE_DIR = os.path.expanduser("~/.dfs_engines_cache")
+os.makedirs(CACHE_DIR, exist_ok=True)
+CACHE_TTL_SECONDS = {
+    "MLB": 900,
+    "NBA": 900,
+    "NHL": 900,
+    "WNBA": 1800,
+    "WC": 1800,
+}[SPORT_LABEL]
+
+
+def check_quota_or_abort(resp, context: str) -> None:
+    """Read x-requests-remaining from response and abort run if below floor."""
+    try:
+        remaining = int(resp.headers.get('x-requests-remaining', '99999'))
+    except (AttributeError, TypeError, ValueError):
+        return
+    floor = max(QUOTA_FLOOR_GLOBAL, QUOTA_FLOOR_THIS_SPORT)
+    if remaining < floor:
+        print(f"🛑 QUOTA GUARD: {remaining} remaining < floor {floor} ({context}). Aborting run.")
+        sys.exit(0)
+
+
+def cached_odds_fetch(cache_key: str, fetch_fn):
+    """Return cached payload if fresh, else fetch and cache."""
+    path = os.path.join(CACHE_DIR, f"{SPORT_LABEL}_{cache_key}.json")
+    if os.path.exists(path) and (time.time() - os.path.getmtime(path)) < CACHE_TTL_SECONDS:
+        age = int(time.time() - os.path.getmtime(path))
+        with open(path) as f:
+            print(f"💾 Cache hit: {cache_key} (age {age}s)")
+            return json.load(f)
+    data = fetch_fn()
+    with open(path, 'w') as f:
+        json.dump(data, f)
+    return data
 
 def get_nhl_season_id(now=None):
     now = now or datetime.now()
@@ -1132,13 +1178,20 @@ print(f"  ✅ {len(skater_splits)} skater splits, {len(goalie_splits)} goalie sp
 # ═══════════════════════════════════════════════
 print("\n💰 Fetching odds (spreads, totals)...")
 try:
-    odds_r = requests.get(f"{ODDS_BASE}/sports/{SPORT_KEY}/odds", params={
-        "apiKey": ODDS_API_KEY,
-        "regions": "us",
-        "markets": "h2h,spreads,totals",
-        "oddsFormat": "american"
-    }, timeout=15)
-    odds_data = odds_r.json() if odds_r.status_code == 200 else []
+    def _fetch_game_odds():
+        odds_r = requests.get(f"{ODDS_BASE}/sports/{SPORT_KEY}/odds", params={
+            "apiKey": ODDS_API_KEY,
+            "regions": "us",
+            "markets": "h2h,spreads,totals",
+            "oddsFormat": "american"
+        }, timeout=15)
+        check_quota_or_abort(odds_r, "NHL game odds")
+        if odds_r.status_code != 200:
+            print(f"  ❌ Odds API Error: {odds_r.status_code} — {odds_r.text[:200]}")
+            return []
+        return odds_r.json()
+
+    odds_data = cached_odds_fetch("game_odds", _fetch_game_odds)
     tonight_team_set = set(team_opponents.keys())
     # Parse totals, spreads, and moneylines into team lookup dicts
     for game in odds_data:
@@ -1487,6 +1540,7 @@ df_all_books = pd.DataFrame(columns=ALL_BOOKS_PROPS_COLUMNS)
 all_props = []
 try:
     events_r = requests.get(f"{ODDS_BASE}/sports/{SPORT}/events", params={'apiKey': ODDS_API_KEY}, timeout=15)
+    check_quota_or_abort(events_r, "NHL events")
     ev_data = events_r.json() if events_r.status_code == 200 else []
     if events_r.status_code != 200:
         print(f"  ❌ Failed to fetch events: {events_r.status_code} — {events_r.text[:200]}")
@@ -1502,6 +1556,9 @@ try:
         print(f"  {len(matched_events)} events today (UTC-date fallback)")
     else:
         print(f"  {len(matched_events)} events matched to tonight's schedule")
+    if not matched_events:
+        print(f"⏭️  No {SPORT_LABEL} games scheduled — skipping props pull.")
+        sys.exit(0)
 
     all_book_rows = []
     api_errors = 0
@@ -1518,6 +1575,7 @@ try:
                     'bookmakers': ','.join(SUPPORTED_BOOKMAKERS),
                     'oddsFormat': 'american',
                 }, timeout=15)
+                check_quota_or_abort(r, f"NHL event props {eid}")
                 last_resp = r
                 if r.status_code != 200:
                     if api_errors < 3:
