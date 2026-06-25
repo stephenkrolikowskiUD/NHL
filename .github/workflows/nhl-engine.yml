@@ -3,10 +3,12 @@ name: NHL Engine
 on:
   workflow_dispatch:
   schedule:
-    - cron: "45 5 * * *"
-    - cron: "0 15 * * *"
-    - cron: "0 19 * * *"
-    - cron: "30 22 * * *"
+    # - cron: "45 5 * * *"
+    # - cron: "0 15 * * *"
+    # - cron: "0 19 * * *"
+    # - cron: "30 22 * * *"
+    # CREDIT-CONSERVATION 2026-06-24 → 2026-07-01
+    - cron: "30 21 * * *"
 
 jobs:
   run-nhl-engine:

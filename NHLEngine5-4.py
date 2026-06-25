@@ -99,6 +99,8 @@ NHL_STATS = "https://api.nhle.com/stats/rest/en"
 ODDS_BASE = "https://api.the-odds-api.com/v4"
 SPORT_KEY = "icehockey_nhl"
 SPORT_LABEL = "NHL"
+ENABLE_FANDUEL_FALLBACK = os.getenv("ENABLE_FANDUEL_FALLBACK", "false").lower() == "true"
+_last_odds_credits_remaining = None
 
 # --- Odds API quota guard ---
 QUOTA_FLOOR_GLOBAL = 2000
@@ -122,13 +124,22 @@ CACHE_TTL_SECONDS = {
 
 def check_quota_or_abort(resp, context: str) -> None:
     """Read x-requests-remaining from response and abort run if below floor."""
+    global _last_odds_credits_remaining
     try:
         remaining = int(resp.headers.get('x-requests-remaining', '99999'))
     except (AttributeError, TypeError, ValueError):
         return
-    floor = max(QUOTA_FLOOR_GLOBAL, QUOTA_FLOOR_THIS_SPORT)
+    _last_odds_credits_remaining = remaining
+    try:
+        runlog.odds_credits_remaining = remaining
+    except Exception:
+        pass
+    floor = QUOTA_FLOOR_THIS_SPORT
     if remaining < floor:
-        print(f"🛑 QUOTA GUARD: {remaining} remaining < floor {floor} ({context}). Aborting run.")
+        print(
+            f"🛑 QUOTA GUARD: {remaining} remaining < {SPORT_LABEL} floor {floor} "
+            f"({context}). Aborting run."
+        )
         sys.exit(0)
 
 
@@ -1186,6 +1197,7 @@ try:
             "oddsFormat": "american"
         }, timeout=15)
         check_quota_or_abort(odds_r, "NHL game odds")
+        print(f"  📊 API quota remaining: {odds_r.headers.get('x-requests-remaining', '?')}")
         if odds_r.status_code != 200:
             print(f"  ❌ Odds API Error: {odds_r.status_code} — {odds_r.text[:200]}")
             return []
@@ -1294,6 +1306,9 @@ THIN_MARKET_THRESHOLD = 5
 # Caesars was dropped on 2026-05-27 — returned 0/0 best-book wins in production verification.
 # May be worth re-adding after 6/1 reset to re-test (could have been a one-day API issue).
 SUPPORTED_BOOKMAKERS = ['draftkings', 'fanduel', 'betmgm', 'espnbet']
+ACTIVE_PROP_BOOKMAKERS = SUPPORTED_BOOKMAKERS if ENABLE_FANDUEL_FALLBACK else [
+    b for b in SUPPORTED_BOOKMAKERS if b != FALLBACK_BOOKMAKER
+]
 REFERENCE_BOOKMAKER = 'draftkings'
 BEST_BOOK_TIE_BREAK = 'alpha'
 
@@ -1400,7 +1415,7 @@ def finalize_all_books_frame(rows, timestamp_value, name_fixes=None):
     if not rows:
         return pd.DataFrame(columns=ALL_BOOKS_PROPS_COLUMNS)
     df = pd.DataFrame(rows)
-    df = df[df['BOOK'].isin(SUPPORTED_BOOKMAKERS)].copy()
+    df = df[df['BOOK'].isin(ACTIVE_PROP_BOOKMAKERS)].copy()
     df = apply_multi_book_name_fixes(df, name_fixes or {})
     df['LINE'] = pd.to_numeric(df['LINE'], errors='coerce')
     df['OVER_ODDS'] = pd.to_numeric(df['OVER_ODDS'], errors='coerce')
@@ -1510,7 +1525,9 @@ def print_best_book_summary(df_props, df_all_books):
     print("\n" + "=" * 60)
     print("BEST-BOOK ROUTING SUMMARY")
     print("=" * 60)
-    print(f"   Books queried:    {', '.join(SUPPORTED_BOOKMAKERS)}")
+    print(f"   Books queried:    {', '.join(ACTIVE_PROP_BOOKMAKERS)}")
+    if not ENABLE_FANDUEL_FALLBACK:
+        print("   ⏭️  FanDuel fallback DISABLED (ENABLE_FANDUEL_FALLBACK=false) — FanDuel skipped")
     if df_all_books is None or df_all_books.empty or df_props is None or df_props.empty:
         print("   Props covered:    0 unique (player, metric) pairs")
         print("=" * 60)
@@ -1521,7 +1538,7 @@ def print_best_book_summary(df_props, df_all_books):
     print(f"   Props covered:    {covered} unique (player, metric) pairs")
     print(f"   DK reference:     {dk_ref} / {covered} ({dk_pct:.1f}%)")
     print("   Best-book wins by:")
-    for book in SUPPORTED_BOOKMAKERS:
+    for book in ACTIVE_PROP_BOOKMAKERS:
         over_ct = int((df_props.get('BEST_OVER_BOOK') == book).sum()) if 'BEST_OVER_BOOK' in df_props.columns else 0
         under_ct = int((df_props.get('BEST_UNDER_BOOK') == book).sum()) if 'BEST_UNDER_BOOK' in df_props.columns else 0
         print(f"      {book:<12} {over_ct:>4} OVER  / {under_ct:>4} UNDER")
@@ -1572,7 +1589,7 @@ try:
                     'apiKey': ODDS_API_KEY,
                     'regions': 'us',
                     'markets': markets_param,
-                    'bookmakers': ','.join(SUPPORTED_BOOKMAKERS),
+                    'bookmakers': ','.join(ACTIVE_PROP_BOOKMAKERS),
                     'oddsFormat': 'american',
                 }, timeout=15)
                 check_quota_or_abort(r, f"NHL event props {eid}")
@@ -1590,7 +1607,7 @@ try:
                 continue
             for bm in data.get('bookmakers', []):
                 book_key = bm.get('key', '')
-                if book_key not in SUPPORTED_BOOKMAKERS:
+                if book_key not in ACTIVE_PROP_BOOKMAKERS:
                     continue
                 for mkt in bm.get('markets', []):
                     metric = market_mapping.get(mkt.get('key'))
@@ -1605,7 +1622,7 @@ try:
         print(f"  📊 API quota remaining: {last_resp.headers.get('x-requests-remaining', '?')}")
     if api_errors:
         print(f"  ⚠️ Total props API errors: {api_errors}")
-    for book in SUPPORTED_BOOKMAKERS:
+    for book in ACTIVE_PROP_BOOKMAKERS:
         book_ct = 0 if df_all_books.empty else int((df_all_books['BOOK'] == book).sum())
         if book_ct == 0:
             print(f"  {book}: 0 props")
