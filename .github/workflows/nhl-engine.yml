@@ -1,14 +1,12 @@
 name: NHL Engine
 
 on:
+  # OFF-SEASON 2026-07-30: scheduled runs removed; manual-only until next season.
+  # Out of season the engine finds no games, skips writing the empty "tonight" tabs
+  # (leaving a stale slate on the dashboard), and still spends Odds API credits.
+  # Prior schedule is recoverable from git history. Re-add a `schedule:` block at
+  # season start.
   workflow_dispatch:
-  schedule:
-    # - cron: "45 5 * * *"
-    # - cron: "0 15 * * *"
-    # - cron: "0 19 * * *"
-    # - cron: "30 22 * * *"
-    # CREDIT-CONSERVATION 2026-06-24 → 2026-07-01
-    - cron: "30 21 * * *"
 
 jobs:
   run-nhl-engine:
