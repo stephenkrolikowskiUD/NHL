@@ -21,6 +21,7 @@ Sheets written:
 import requests, json, time, re, math, unicodedata, os, sys
 import atexit
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from collections import defaultdict
 import pandas as pd
 import numpy as np
@@ -56,7 +57,8 @@ else:
     print("⚠️ No Gemini API key found — AI picks will be skipped.")
 
 SHEET_ID = "1OpER7aRmMFWyxMONdg_LqiyQ47cA3dWRSR8UEQH8FIM"
-TODAY = date.today().isoformat()  # YYYY-MM-DD
+EASTERN = ZoneInfo("America/New_York")
+TODAY = datetime.now(EASTERN).date().isoformat()
 SNAPSHOT_DATE = "2026-05-04"
 
 SHEET_SCHEMAS = {
@@ -156,13 +158,22 @@ def cached_odds_fetch(cache_key: str, fetch_fn):
         json.dump(data, f)
     return data
 
+def event_eastern_date(timestamp):
+    try:
+        parsed = datetime.fromisoformat(str(timestamp).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return ""
+        return parsed.astimezone(EASTERN).date().isoformat()
+    except (ValueError, TypeError):
+        return ""
+
 def get_nhl_season_id(now=None):
-    now = now or datetime.now()
+    now = now or datetime.now(EASTERN)
     start_year = now.year if now.month >= 7 else now.year - 1
     return f"{start_year}{start_year + 1}"
 
 def get_nhl_game_type(now=None):
-    now = now or datetime.now()
+    now = now or datetime.now(EASTERN)
     season_id = get_nhl_season_id(now)
     season_end_year = int(season_id[4:])
     # 2025-26 regular season ends April 16, 2026 and playoffs begin April 18, 2026.
@@ -593,6 +604,18 @@ if not games:
     if sched2:
         games = sched2.get("games", [])
 
+if not games:
+    schedule_confirmed = bool(schedule_data and any(day.get("date") == TODAY for day in schedule_data.get("gameWeek", [])))
+    score_confirmed = bool(sched2 and sched2.get("currentDate") == TODAY and "games" in sched2)
+    if not (schedule_confirmed or score_confirmed):
+        raise RuntimeError("Could not verify today's NHL schedule; preserving the previous snapshot")
+    safe_upload("Slate_Status", [{"SLATE_DATE": TODAY, "GAME_COUNT": 0,
+        "LAST_UPDATED": datetime.now(EASTERN).isoformat(), "STATUS": "NO_GAMES"}])
+    print("No games today; published empty-slate status and skipped odds and AI requests.")
+    sys.exit(0)
+
+# The schedule is authoritative for regular season versus playoff games.
+GAME_TYPE = 3 if any(g.get("gameType") == 3 for g in games) else 2
 print(f"  Found {len(games)} games tonight")
 for g in games:
     away = g.get("awayTeam", {}).get("abbrev", "?")
@@ -603,6 +626,7 @@ for g in games:
 game_pairs = []
 team_opponents = {}  # team_abbr -> opp_abbr
 team_home_away = {}  # team_abbr -> "Home"/"Away"
+team_start_times = {}
 team_game_totals = {}
 team_spreads = {}
 team_moneylines = {}
@@ -615,6 +639,8 @@ for g in games:
     game_pairs.append({"away": away_abbr, "home": home_abbr, "venue": venue, "game_id": g.get("id")})
     team_opponents[away_abbr] = home_abbr
     team_opponents[home_abbr] = away_abbr
+    team_start_times[away_abbr] = g.get("startTimeUTC", "")
+    team_start_times[home_abbr] = g.get("startTimeUTC", "")
     team_home_away[away_abbr] = "Away"
     team_home_away[home_abbr] = "Home"
 
@@ -890,7 +916,7 @@ for gid in games_to_fetch:
                     "BLK": p.get("blockedShots", 0) or 0,
                     "HITS": p.get("hits", 0) or 0,
                     "FOW": p.get("faceoffWins", p.get("faceOffWins", 0) or 0),
-                    "fetched_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "fetched_at": datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M:%S"),
                 }
                 bs_lookup[(str(gid), str(ppid))] = {
                     "BLK": cache_row["BLK"],
@@ -975,10 +1001,13 @@ for sk in all_skaters:
         most[f"L5_{stat}"]   = avg(parsed, stat, 5)
         most[f"L3_{stat}"]   = avg(parsed, stat, 3)
 
+    most["team_abbr"] = sk["team_abbr"]
+    most["SLATE_DATE"] = TODAY
+    most["COMMENCE_TIME"] = team_start_times.get(sk["team_abbr"], "")
     most["opp_abbr_tonight"] = team_opponents.get(sk["team_abbr"], "")
     most["home_away_tonight"] = team_home_away.get(sk["team_abbr"], "")
     most["position"] = sk["position"]
-    most["LAST_UPDATED"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    most["LAST_UPDATED"] = datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M")
 
     opp = team_opponents.get(sk["team_abbr"], "")
     h2h_rows = [r for r in parsed if str(r.get("opp_abbr", "")).upper() == opp]
@@ -1140,10 +1169,13 @@ for i, gk in enumerate(all_goalies, start=1):
         most[f"L5_{stat}"] = avg(parsed, stat, 5)
         most[f"L3_{stat}"] = avg(parsed, stat, 3)
 
+    most["team_abbr"] = gk["team_abbr"]
+    most["SLATE_DATE"] = TODAY
+    most["COMMENCE_TIME"] = team_start_times.get(gk["team_abbr"], "")
     most["opp_abbr_tonight"] = team_opponents.get(gk["team_abbr"], "")
     most["home_away_tonight"] = team_home_away.get(gk["team_abbr"], "")
     most["starter_status"] = starter_goalies.get(gk["team_abbr"], {}).get("status", "roster")
-    most["LAST_UPDATED"] = datetime.now().strftime("%Y-%m-%d %H:%M")
+    most["LAST_UPDATED"] = datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M")
     goalie_tonight.append(most)
     if i % 5 == 0 or i == len(all_goalies):
         print(f"  ... {i}/{len(all_goalies)} goalie logs processed")
@@ -1566,16 +1598,15 @@ try:
     for e in ev_data:
         away_abbr = NHL_NAME_TO_ABBR.get(str(e.get('away_team', '')).strip(), '')
         home_abbr = NHL_NAME_TO_ABBR.get(str(e.get('home_team', '')).strip(), '')
-        if (away_abbr, home_abbr) in scheduled_event_keys:
+        if (away_abbr, home_abbr) in scheduled_event_keys and event_eastern_date(e.get('commence_time')) == TODAY:
             matched_events.append(e)
     if not matched_events:
-        matched_events = [e for e in ev_data if e.get('commence_time', '')[:10] == TODAY]
-        print(f"  {len(matched_events)} events today (UTC-date fallback)")
+        matched_events = [e for e in ev_data if event_eastern_date(e.get('commence_time')) == TODAY]
+        print(f"  {len(matched_events)} events today (Eastern-date fallback)")
     else:
         print(f"  {len(matched_events)} events matched to tonight's schedule")
     if not matched_events:
-        print(f"⏭️  No {SPORT_LABEL} games scheduled — skipping props pull.")
-        sys.exit(0)
+        print(f"⏭️  No {SPORT_LABEL} odds events available — continuing with player data.")
 
     all_book_rows = []
     api_errors = 0
@@ -1616,7 +1647,7 @@ try:
                     all_book_rows.extend(parse_multi_book_market(mkt, metric, book_key, BINARY_PROP_MARKETS))
         time.sleep(0.5)
 
-    timestamp_props = datetime.now().strftime('%Y-%m-%d %I:%M %p EST')
+    timestamp_props = datetime.now(EASTERN).strftime('%Y-%m-%d %I:%M %p %Z')
     df_all_books = finalize_all_books_frame(all_book_rows, timestamp_props, name_fixes)
     if last_resp is not None and hasattr(last_resp, 'headers'):
         print(f"  📊 API quota remaining: {last_resp.headers.get('x-requests-remaining', '?')}")
@@ -1667,7 +1698,7 @@ if len(existing_daily_picks) > 0:
         seen_pick_keys.add(key)
 existing_run_numbers = pd.to_numeric(existing_daily_picks.get("RUN_NUMBER", pd.Series(dtype=float)), errors="coerce").dropna().astype(int)
 today_run_number = int(existing_run_numbers.max()) + 1 if not existing_run_numbers.empty else 1
-refresh_clv_daily_picks("Daily_Picks", TODAY, all_props, datetime.now().strftime("%Y-%m-%d %I:%M %p EST"))
+refresh_clv_daily_picks("Daily_Picks", TODAY, all_props, datetime.now(EASTERN).strftime("%Y-%m-%d %I:%M %p %Z"))
 
 if GEMINI_API_KEY and len(games) > 0 and (len(skater_tonight) > 0 or len(goalie_tonight) > 0):
     try:
@@ -2118,7 +2149,7 @@ IMPORTANT: Return ONLY the JSON array. No markdown, no preamble."""
             daily_picks.append({
                 "DATE": TODAY,
                 "RUN_NUMBER": today_run_number,
-                "RUN_TIME": datetime.now().strftime("%Y-%m-%d %I:%M %p EST"),
+                "RUN_TIME": datetime.now(EASTERN).strftime("%Y-%m-%d %I:%M %p %Z"),
                 "rank": pk.get("rank", ""),
                 "player": pk.get("player", ""),
                 "team": pk.get("team", ""),
@@ -2139,7 +2170,7 @@ IMPORTANT: Return ONLY the JSON array. No markdown, no preamble."""
                 "CLV_OPEN_LINE": pk.get("line", ""),
                 "CLV_LATEST_LINE": pk.get("line", ""),
                 "CLV_DELTA": 0.0,
-                "CLV_LAST_UPDATE": datetime.now().strftime("%Y-%m-%d %I:%M %p EST"),
+                "CLV_LAST_UPDATE": datetime.now(EASTERN).strftime("%Y-%m-%d %I:%M %p %Z"),
                 "HIT": "",
                 "ACTUAL_STAT": "",
                 "RESULT": "",
@@ -2194,6 +2225,8 @@ if daily_picks:
 # 📊 SUMMARY
 # ═══════════════════════════════════════════════
 print(f"\n{'='*50}")
+safe_upload("Slate_Status", [{"SLATE_DATE": TODAY, "GAME_COUNT": len(games), "PROP_COUNT": len(all_props),
+    "LAST_UPDATED": datetime.now(EASTERN).isoformat(), "STATUS": "READY"}])
 print(f"🏒 NHL ENGINE v1.2 — RUN COMPLETE")
 print(f"{'='*50}")
 print(f"  📅 Date: {TODAY}")
