@@ -27,6 +27,7 @@ import pandas as pd
 import numpy as np
 from google.oauth2.service_account import Credentials
 from run_logger import RunLogger
+from nhl_research import annotate_log, season_rows, season_summary, capture_pick_price
 
 # ═══════════════════════════════════════════════
 # 🔑 API KEYS — Loaded from Colab userdata (or prompted)
@@ -239,7 +240,9 @@ def safe_upload(name, rows):
         ws = wb.worksheet(name)
     except gspread.exceptions.WorksheetNotFound:
         ws = wb.add_worksheet(title=name, rows=max(len(rows)+1, 100), cols=40)
-    headers = list(rows[0].keys())
+    headers = list(dict.fromkeys(key for row in rows for key in row))
+    if ws.col_count < len(headers) or ws.row_count < len(rows) + 1:
+        ws.resize(rows=max(ws.row_count, len(rows)+1), cols=max(ws.col_count, len(headers)))
     clean_rows = [[clean_cell(r.get(h, "")) for h in headers] for r in rows]
     ws.clear()
     ws.update([headers] + clean_rows)
@@ -314,7 +317,7 @@ def load_existing_logs(sheet_name, numeric_fields):
         for field in numeric_fields:
             if field in rec:
                 rec[field] = to_num(rec.get(field), 0)
-        cleaned.append(rec)
+        cleaned.append(annotate_log(rec))
     return cleaned
 
 def load_existing_daily_picks(sheet_name, target_date):
@@ -536,6 +539,9 @@ def append_upload(sheet_name, df):
             ws.update([df.columns.tolist()])
 
         existing = ws.get_all_values()
+        needed_cols = len(set((existing[0] if existing else []) + df.columns.tolist()))
+        if ws.col_count < needed_cols:
+            ws.resize(cols=needed_cols)
         cleaned = [[clean_cell(v) for v in row] for row in df.values.tolist()]
 
         if len(existing) <= 1:
@@ -616,6 +622,27 @@ if not games:
 
 # The schedule is authoritative for regular season versus playoff games.
 GAME_TYPE = 3 if any(g.get("gameType") == 3 for g in games) else 2
+schedule_rows = []
+for day in (schedule_data or {}).get("gameWeek", []):
+    for game in day.get("games", []):
+        schedule_rows.append({"GAME_ID": game.get("id", ""), "GAME_DATE": day.get("date", ""),
+            "AWAY": game.get("awayTeam", {}).get("abbrev", ""), "HOME": game.get("homeTeam", {}).get("abbrev", ""),
+            "COMMENCE_TIME": game.get("startTimeUTC", ""), "GAME_STATE": game.get("gameState", ""), "GAME_TYPE": game.get("gameType", "")})
+if not any(r["GAME_DATE"] == TODAY for r in schedule_rows):
+    for game in games:
+        schedule_rows.append({"GAME_ID": game.get("id", ""), "GAME_DATE": TODAY,
+            "AWAY": game.get("awayTeam", {}).get("abbrev", ""), "HOME": game.get("homeTeam", {}).get("abbrev", ""),
+            "COMMENCE_TIME": game.get("startTimeUTC", ""), "GAME_STATE": game.get("gameState", ""), "GAME_TYPE": game.get("gameType", "")})
+yesterday = (date.fromisoformat(TODAY) - timedelta(days=1)).isoformat()
+prior_schedule = nhl_get(f"{NHL_API}/schedule/{yesterday}")
+prior_day = next((d for d in (prior_schedule or {}).get("gameWeek", []) if d.get("date") == yesterday and "games" in d), None)
+teams_played_yesterday = set()
+if prior_day is not None:
+    for game in prior_day["games"]:
+        away, home = game.get("awayTeam", {}).get("abbrev", ""), game.get("homeTeam", {}).get("abbrev", "")
+        teams_played_yesterday.update([away, home])
+        schedule_rows.append({"GAME_ID": game.get("id", ""), "GAME_DATE": yesterday, "AWAY": away, "HOME": home,
+            "COMMENCE_TIME": game.get("startTimeUTC", ""), "GAME_STATE": game.get("gameState", ""), "GAME_TYPE": game.get("gameType", "")})
 print(f"  Found {len(games)} games tonight")
 for g in games:
     away = g.get("awayTeam", {}).get("abbrev", "?")
@@ -846,7 +873,7 @@ for i, sk in enumerate(all_skaters, start=1):
     if GAME_TYPE == 3:
         po_data = nhl_get(f"{NHL_API}/player/{pid}/game-log/{CURRENT_SEASON}/3")
         playoff_logs = po_data.get("gameLog", []) if po_data else []
-    logs = playoff_logs + reg_logs  # playoff games first
+    logs = [dict(g, GAME_TYPE=3) for g in playoff_logs] + [dict(g, GAME_TYPE=2) for g in reg_logs]  # playoff games first
     if not logs:
         continue
     parsed = []
@@ -860,6 +887,8 @@ for i, sk in enumerate(all_skaters, start=1):
             "player_name": sk["player_name"],
             "team_abbr": sk["team_abbr"],
             "game_date": game_date,
+            "SEASON_ID": CURRENT_SEASON,
+            "GAME_TYPE": g.get("GAME_TYPE", 2),
             "opp_abbr": g.get("opponentAbbrev", ""),
             "home_away": "Home" if g.get("homeRoadFlag") == "H" else "Away",
             "G": g.get("goals", 0),
@@ -984,24 +1013,18 @@ for pid_key, rows in skater_logs_by_player.items():
     rows.sort(key=lambda x: normalize_date(x["game_date"]), reverse=True)
     skater_logs.extend(rows)
 
-skater_sample_flags = build_skater_sample_flags(skater_logs_by_player, TODAY)
+skater_sample_flags = build_skater_sample_flags({pid: season_rows(rows, CURRENT_SEASON, GAME_TYPE) for pid, rows in skater_logs_by_player.items()}, TODAY)
 limited_ct = sum(1 for info in skater_sample_flags.values() if info.get("LIMITED_SAMPLE"))
 returning_ct = sum(1 for info in skater_sample_flags.values() if info.get("RETURNING"))
 print(f"  ✅ Sample flags built — {limited_ct} LIMITED_SAMPLE, {returning_ct} RETURNING")
 
 for sk in all_skaters:
     pid = sk["id"]
-    parsed = skater_logs_by_player.get(str(pid))
-    if not parsed:
-        continue
-
-    most = parsed[0].copy()
-    for stat in ["G", "A", "PTS", "SOG", "BLK", "HITS", "PPP", "FOW", "PIM", "DK_FP", "UD_FP"]:
-        most[f"Seas_{stat}"] = avg(parsed, stat, len(parsed))
-        most[f"L5_{stat}"]   = avg(parsed, stat, 5)
-        most[f"L3_{stat}"]   = avg(parsed, stat, 3)
-
+    parsed = skater_logs_by_player.get(str(pid), [])
+    most = parsed[0].copy() if parsed else {}
+    most.update({"player_id": pid, "player_name": sk["player_name"]})
     most["team_abbr"] = sk["team_abbr"]
+    most["BACK_TO_BACK"] = ("YES" if sk["team_abbr"] in teams_played_yesterday else "NO") if prior_day is not None else "UNKNOWN"
     most["SLATE_DATE"] = TODAY
     most["COMMENCE_TIME"] = team_start_times.get(sk["team_abbr"], "")
     most["opp_abbr_tonight"] = team_opponents.get(sk["team_abbr"], "")
@@ -1037,6 +1060,8 @@ for sk in all_skaters:
         "RETURNING": False,
     }))
 
+    most.update(season_summary(parsed, CURRENT_SEASON, ["G", "A", "PTS", "SOG", "BLK", "HITS", "PPP", "FOW", "PIM", "DK_FP", "UD_FP"], GAME_TYPE))
+    most["RETURNING"] = bool(most.get("RETURNING")) and most["CURRENT_SEASON_GP"] >= 5
     skater_tonight.append(most)
 
 print(f"  ✅ {len(skater_tonight)} skaters with logs, {len(skater_logs)} combined game log rows")
@@ -1061,6 +1086,14 @@ if latest_goalie_date:
     print(f"  ♻️ Seeding from Goalie_Game_Logs through {latest_goalie_date} ({len(existing_goalie_logs)} existing rows)")
 else:
     print("  🆕 No existing Goalie_Game_Logs seed found — full goalie fetch")
+
+legacy_goalie_lookup = {(normalize_player_name(r.get("player_name", "")), normalize_date(r.get("game_date", ""))): r for r in existing_goalie_logs}
+
+def tag_existing_goalie_logs(name, logs, season_id, kind):
+    for game in logs:
+        row = legacy_goalie_lookup.get((normalize_player_name(name), normalize_date(game.get("gameDate", ""))))
+        if row is not None:
+            row.update({"SEASON_ID": season_id, "GAME_TYPE": kind, "gameId": game.get("gameId") or game.get("id") or row.get("gameId", "")})
 
 combined_goalie_logs = list(existing_goalie_logs)
 existing_goalie_keys = {
@@ -1092,7 +1125,14 @@ for i, gk in enumerate(all_goalies, start=1):
     if GAME_TYPE == 3:
         po_data = nhl_get(f"{NHL_API}/player/{pid}/game-log/{CURRENT_SEASON}/3")
         playoff_logs = po_data.get("gameLog", []) if po_data else []
-    logs = playoff_logs + reg_logs
+    tag_existing_goalie_logs(gk["player_name"], reg_logs, CURRENT_SEASON, 2)
+    tag_existing_goalie_logs(gk["player_name"], playoff_logs, CURRENT_SEASON, 3)
+    previous_season = f"{int(CURRENT_SEASON[:4])-1}{CURRENT_SEASON[:4]}"
+    if any(normalize_player_name(r.get("player_name")) == normalize_player_name(gk["player_name"]) and str(r.get("SEASON_ID")) == previous_season and not r.get("GAME_TYPE") for r in existing_goalie_logs):
+        for kind in (2, 3):
+            previous_data = nhl_get(f"{NHL_API}/player/{pid}/game-log/{previous_season}/{kind}") or {}
+            tag_existing_goalie_logs(gk["player_name"], previous_data.get("gameLog", []), previous_season, kind)
+    logs = [dict(g, GAME_TYPE=3) for g in playoff_logs] + [dict(g, GAME_TYPE=2) for g in reg_logs]
     if not logs:
         continue
     parsed = []
@@ -1106,9 +1146,12 @@ for i, gk in enumerate(all_goalies, start=1):
         svp = round(sv / sa, 3) if sa > 0 else 0
         row = {
             "player_id": pid,
+            "gameId": g.get("gameId") or g.get("id"),
             "player_name": gk["player_name"],
             "team_abbr": gk["team_abbr"],
             "game_date": game_date,
+            "SEASON_ID": CURRENT_SEASON,
+            "GAME_TYPE": g.get("GAME_TYPE", 2),
             "opp_abbr": g.get("opponentAbbrev", ""),
             "home_away": "Home" if g.get("homeRoadFlag") == "H" else "Away",
             "W": 1 if g.get("decision") == "W" else 0,
@@ -1155,27 +1198,23 @@ for i, gk in enumerate(all_goalies, start=1):
             continue
         if not starter_id and starter_name and norm_name(gk["player_name"]) != norm_name(starter_name):
             continue
-    parsed = goalie_logs_by_name.get(normalize_player_name(gk["player_name"]))
-    if not parsed:
-        continue
+    parsed = goalie_logs_by_name.get(normalize_player_name(gk["player_name"]), [])
 
     def avg(lst, key, n):
         sl = lst[:n]
         return round(sum(r.get(key, 0) for r in sl) / len(sl), 3) if sl else 0
 
-    most = parsed[0].copy()
-    for stat in ["W", "SV", "GA", "SA", "SV_PCT", "SO", "DK_FP", "UD_FP"]:
-        most[f"Seas_{stat}"] = avg(parsed, stat, len(parsed))
-        most[f"L5_{stat}"] = avg(parsed, stat, 5)
-        most[f"L3_{stat}"] = avg(parsed, stat, 3)
-
+    most = parsed[0].copy() if parsed else {}
+    most.update({"player_id": gk["id"], "player_name": gk["player_name"]})
     most["team_abbr"] = gk["team_abbr"]
+    most["BACK_TO_BACK"] = ("YES" if gk["team_abbr"] in teams_played_yesterday else "NO") if prior_day is not None else "UNKNOWN"
     most["SLATE_DATE"] = TODAY
     most["COMMENCE_TIME"] = team_start_times.get(gk["team_abbr"], "")
     most["opp_abbr_tonight"] = team_opponents.get(gk["team_abbr"], "")
     most["home_away_tonight"] = team_home_away.get(gk["team_abbr"], "")
     most["starter_status"] = starter_goalies.get(gk["team_abbr"], {}).get("status", "roster")
     most["LAST_UPDATED"] = datetime.now(EASTERN).strftime("%Y-%m-%d %H:%M")
+    most.update(season_summary(parsed, CURRENT_SEASON, ["W", "SV", "GA", "SA", "SV_PCT", "SO", "DK_FP", "UD_FP"], GAME_TYPE))
     goalie_tonight.append(most)
     if i % 5 == 0 or i == len(all_goalies):
         print(f"  ... {i}/{len(all_goalies)} goalie logs processed")
@@ -1188,12 +1227,12 @@ print(f"  ✅ {len(goalie_tonight)} goalies with logs, {len(goalie_logs)} combin
 print("\n🏠 Computing home/away splits...")
 skater_splits = []
 for name in set(r["player_name"] for r in skater_logs):
-    plogs = [r for r in skater_logs if r["player_name"] == name]
+    plogs = season_rows([r for r in skater_logs if r["player_name"] == name], CURRENT_SEASON, GAME_TYPE)
     home = [r for r in plogs if r["home_away"] == "Home"]
     away = [r for r in plogs if r["home_away"] == "Away"]
     if not home and not away:
         continue
-    sp = {"player_name": name, "Home_GAMES": len(home), "Away_GAMES": len(away)}
+    sp = {"SEASON_ID": CURRENT_SEASON, "GAME_TYPE": GAME_TYPE, "player_name": name, "Home_GAMES": len(home), "Away_GAMES": len(away)}
     for stat in ["G", "A", "PTS", "SOG", "BLK", "HITS", "PPP", "FOW", "DK_FP", "UD_FP"]:
         sp[f"{stat}_Home"] = round(sum(to_num(r.get(stat, 0), 0) for r in home) / len(home), 3) if home else 0
         sp[f"{stat}_Away"] = round(sum(to_num(r.get(stat, 0), 0) for r in away) / len(away), 3) if away else 0
@@ -1201,12 +1240,12 @@ for name in set(r["player_name"] for r in skater_logs):
 
 goalie_splits = []
 for name in set(r["player_name"] for r in goalie_logs):
-    plogs = [r for r in goalie_logs if r["player_name"] == name]
+    plogs = season_rows([r for r in goalie_logs if r["player_name"] == name], CURRENT_SEASON, GAME_TYPE)
     home = [r for r in plogs if r["home_away"] == "Home"]
     away = [r for r in plogs if r["home_away"] == "Away"]
     if not home and not away:
         continue
-    sp = {"player_name": name, "Home_GAMES": len(home), "Away_GAMES": len(away)}
+    sp = {"SEASON_ID": CURRENT_SEASON, "GAME_TYPE": GAME_TYPE, "player_name": name, "Home_GAMES": len(home), "Away_GAMES": len(away)}
     for stat in ["SV", "GA", "SV_PCT", "W", "DK_FP"]:
         sp[f"{stat}_Home"] = round(sum(r[stat] for r in home) / len(home), 3) if home else 0
         sp[f"{stat}_Away"] = round(sum(r[stat] for r in away) / len(away), 3) if away else 0
@@ -1239,6 +1278,8 @@ try:
     tonight_team_set = set(team_opponents.keys())
     # Parse totals, spreads, and moneylines into team lookup dicts
     for game in odds_data:
+        if event_eastern_date(game.get("commence_time")) != TODAY:
+            continue
         away = game.get("away_team","")
         home = game.get("home_team","")
         away_abbr = NHL_NAME_TO_ABBR.get(away,"")
@@ -1736,12 +1777,12 @@ if GEMINI_API_KEY and len(games) > 0 and (len(skater_tonight) > 0 or len(goalie_
         deduped_goalies = list(deduped_goalie_map.values())
         print(f"  Goalies after dedupe: {len(deduped_goalies)}")
         logs_by_player = defaultdict(list)
-        for g in skater_logs:
+        for g in season_rows(skater_logs, CURRENT_SEASON, GAME_TYPE):
             logs_by_player[normalize_player_name(g.get("player_name"))].append(g)
         skaters_with_logs = [p for p in deduped_skaters if logs_by_player.get(normalize_player_name(p.get("player_name")))]
         print(f"  Skaters with logs: {len(skaters_with_logs)}")
         goalie_logs_by_player = defaultdict(list)
-        for g in goalie_logs:
+        for g in season_rows(goalie_logs, CURRENT_SEASON, GAME_TYPE):
             goalie_logs_by_player[normalize_player_name(g.get("player_name"))].append(g)
         goalies_with_logs = [p for p in deduped_goalies if goalie_logs_by_player.get(normalize_player_name(p.get("player_name")))]
         print(f"  Goalies with logs: {len(goalies_with_logs)}")
@@ -1917,11 +1958,11 @@ if GEMINI_API_KEY and len(games) > 0 and (len(skater_tonight) > 0 or len(goalie_
             split_str = f" | Tonight {loc} split: {' '.join(split_bits[:4])}" if split_bits else ""
             streak_bits = player_streak_map.get(pname_norm, [])
             streak_str = f" | Streaks: {', '.join(streak_bits[:3])}" if streak_bits else ""
-            sample_str = ""
+            sample_str = f" | Current season games: {p.get('CURRENT_SEASON_GP', 0)}; prior season games: {p.get('PRIOR_SEASON_GP', 0)}. Recent averages use current season only."
             if bool(p.get("RETURNING", False)):
-                sample_str = f" | SAMPLE FLAG: RETURNING (L5 games={int(p.get('L5_GAMES_PLAYED', 0) or 0)}, last7={int(p.get('GAMES_LAST_7D', 0) or 0)})"
+                sample_str += f" | SAMPLE FLAG: RETURNING (L5 games={int(p.get('L5_GAMES_PLAYED', 0) or 0)}, last7={int(p.get('GAMES_LAST_7D', 0) or 0)})"
             elif bool(p.get("LIMITED_SAMPLE", False)):
-                sample_str = f" | SAMPLE FLAG: LIMITED_SAMPLE (L5 games={int(p.get('L5_GAMES_PLAYED', 0) or 0)})"
+                sample_str += f" | SAMPLE FLAG: LIMITED_SAMPLE (L5 games={int(p.get('L5_GAMES_PLAYED', 0) or 0)})"
             if is_goalie:
                 player_summaries.append(
                     f"{pname} [GOALIE] ({p['team_abbr']} vs {p.get('opp_abbr_tonight','?')}) | "
@@ -1946,6 +1987,7 @@ if GEMINI_API_KEY and len(games) > 0 and (len(skater_tonight) > 0 or len(goalie_
                 )
         prompt = f"""You are an NHL props analyst. Today is {TODAY}. NHL {'Playoffs' if GAME_TYPE==3 else 'Regular Season'}.
 
+Current-season samples are separate from prior history. Zero games means unavailable evidence, not zero talent. Do not infer role or injuries from a small sample.
 Here are {len(player_summaries)} players playing tonight with their season averages, L5/L3 averages, home/away splits, active streaks, prop hit-rate/EV signals, Underdog fantasy points, matchup context, and DK prop lines:
 
 {chr(10).join(player_summaries)}
@@ -1958,7 +2000,7 @@ RULES:
 - Return EXACTLY 10 ranked picks as a JSON array
 - Confidence tiers: SMASH (top 3-4 highest conviction only), STRONG (next 4-5), LEAN (rest)
 - STRONG should require multiple confirming signals: positive EV, strong hit rate, and supportive matchup/split context. If only one signal is strong, use LEAN instead.
-- Players flagged RETURNING have depressed lines due to injury/absence. Their season averages are NOT reliable short-term predictors. Treat with extreme caution — do NOT SMASH these players.
+- Players flagged RETURNING have depressed lines due to injury/absence. Their season averages may not represent their current usage. Treat with extreme caution — do NOT SMASH these players.
 - STAR players are the top 20 by season UD fantasy points in tonight's valid prop pool.
 - Prefer at least 4 of your 10 picks to come from STAR players. Non-stars should fill the remaining slots only when they have exceptional edges or matchup context.
 - Available prop types: PTS, G, SOG, PPP, HITS, SV
@@ -2147,6 +2189,10 @@ IMPORTANT: Return ONLY the JSON array. No markdown, no preamble."""
                 continue
             seen_pick_keys.add(pick_key)
             daily_picks.append({
+                **capture_pick_price(pk, all_props, datetime.now(EASTERN).isoformat()),
+                "GAME_DATE": TODAY,
+                "COMMENCE_TIME": team_start_times.get(pk.get("team", ""), ""),
+                "SEASON_ID": CURRENT_SEASON,
                 "DATE": TODAY,
                 "RUN_NUMBER": today_run_number,
                 "RUN_TIME": datetime.now(EASTERN).strftime("%Y-%m-%d %I:%M %p %Z"),
@@ -2204,6 +2250,7 @@ else:
 # 📤 STEP 9: UPLOAD TO GOOGLE SHEETS
 # ═══════════════════════════════════════════════
 print("\n📤 Uploading to Google Sheets...")
+safe_upload("Schedule", schedule_rows)
 safe_upload("Tonights_Skaters", skater_tonight)
 safe_upload("Skater_Game_Logs", skater_logs)
 safe_upload("Home_Away_Splits", skater_splits)

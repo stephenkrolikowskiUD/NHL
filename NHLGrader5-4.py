@@ -13,6 +13,7 @@ import gspread
 from google.auth import default
 from google.oauth2.service_account import Credentials
 from run_logger import RunLogger
+from nhl_research import settled_units
 
 def get_gspread_client():
     scopes = [
@@ -47,7 +48,7 @@ atexit.register(runlog.finalize_and_write)
 eastern = pytz.timezone('US/Eastern')
 now_est = datetime.now(eastern)
 today_str = now_est.strftime('%Y-%m-%d')
-timestamp_est = now_est.strftime('%Y-%m-%d %I:%M:%S %p EST')
+timestamp_est = now_est.strftime('%Y-%m-%d %I:%M:%S %p %Z')
 RETRY_DNP_LOOKBACK_DAYS = 7
 PICK_PERF_MIN_SAMPLE = 25
 PICK_PERF_STANDARD_ODDS = -115
@@ -272,7 +273,7 @@ PICK_PERFORMANCE_COLUMNS = [
     'DIMENSION_TYPE', 'DIMENSION_VALUE', 'TIME_WINDOW',
     'N_PICKS', 'N_PICKS_DECISIVE', 'N_HITS', 'N_MISSES', 'N_PUSHES', 'N_DNP',
     'HIT_RATE', 'HIT_RATE_RAW', 'PUSH_RATE', 'DNP_RATE',
-    'ROI_FLAT', 'ROI_PER_PICK',
+    'ROI_FLAT', 'ROI_PER_PICK', 'N_PRICED', 'N_UNPRICED', 'ACTUAL_PROFIT_UNITS', 'ACTUAL_ROI_PCT',
     'AVG_CLV_EDGE', 'CLV_POSITIVE_RATE', 'CLV_POS_HIT_RATE', 'CLV_NEG_HIT_RATE',
     'WILSON_LOWER_95', 'MIN_SAMPLE_FLAG',
     'LAST_UPDATED',
@@ -394,11 +395,16 @@ def pick_perf_metrics_row(df_slice, dim_type, dim_value, window_name):
     n_misses = int((df_slice['HIT'] == 'NO').sum())
     n_pushes = int((df_slice['HIT'] == 'PUSH').sum())
     n_dnp = int((df_slice['HIT'] == 'DNP').sum())
-    n_decisive = n_picks - n_dnp
+    n_decisive = n_hits + n_misses
+    priced_returns = [settled_units(r.get('HIT'), r.get('PICK_ODDS'), r.get('PICK_BOOK')) for r in df_slice.to_dict('records')]
+    priced_returns = [v for v in priced_returns if v is not None]
+    actual_profit = sum(priced_returns)
+    n_priced = len(priced_returns)
+    n_unpriced = n_hits + n_misses + n_pushes - n_priced
     hit_rate = pick_perf_rate(n_hits, n_misses)
-    hit_rate_raw = n_hits / n_decisive if n_decisive > 0 else np.nan
+    hit_rate_raw = n_hits / (n_hits+n_misses+n_pushes) if n_hits+n_misses+n_pushes > 0 else np.nan
     roi_flat = (n_hits * (100 / abs(PICK_PERF_STANDARD_ODDS)) - n_misses) * 100
-    roi_per_pick = roi_flat / n_decisive if n_decisive > 0 else np.nan
+    roi_per_pick = roi_flat / (n_hits+n_misses+n_pushes) if n_hits+n_misses+n_pushes > 0 else np.nan
     clv_numeric = df_slice.dropna(subset=['clv_edge'])
     clv_pos = df_slice[df_slice['clv_edge'] > 0]
     clv_neg = df_slice[df_slice['clv_edge'].notna() & (df_slice['clv_edge'] <= 0)]
@@ -422,6 +428,10 @@ def pick_perf_metrics_row(df_slice, dim_type, dim_value, window_name):
         'HIT_RATE_RAW': round(hit_rate_raw, 3) if pd.notna(hit_rate_raw) else np.nan,
         'PUSH_RATE': round(n_pushes / n_picks, 3) if n_picks else 0,
         'DNP_RATE': round(n_dnp / n_picks, 3) if n_picks else 0,
+        'N_PRICED': n_priced,
+        'N_UNPRICED': n_unpriced,
+        'ACTUAL_PROFIT_UNITS': round(actual_profit, 4) if n_priced else np.nan,
+        'ACTUAL_ROI_PCT': round(100 * actual_profit/n_priced, 3) if n_priced else np.nan,
         'ROI_FLAT': round(roi_flat, 3),
         'ROI_PER_PICK': round(roi_per_pick, 3) if pd.notna(roi_per_pick) else np.nan,
         'AVG_CLV_EDGE': round(clv_numeric['clv_edge'].mean(), 3) if not clv_numeric.empty else np.nan,
@@ -475,6 +485,7 @@ def build_snapshot_rows(metrics_df, snapshot_date):
         key_suffix = 'overall' if dim_type == 'overall' else f"{dim_type.replace('_norm', '')}.{dim_val}"
         rows.append({'SNAPSHOT_DATE': snapshot_date, 'METRIC_KEY': f"hit_rate.{key_suffix}", 'METRIC_VALUE': row['HIT_RATE'], 'N_PICKS': row['N_PICKS_DECISIVE'], 'TIME_WINDOW': row['TIME_WINDOW']})
         if dim_type in {'overall', 'confidence_norm'}:
+            rows.append({'SNAPSHOT_DATE': snapshot_date, 'METRIC_KEY': f"actual_roi_pct.{key_suffix}", 'METRIC_VALUE': row['ACTUAL_ROI_PCT'], 'N_PICKS': row['N_PRICED'], 'TIME_WINDOW': row['TIME_WINDOW']})
             rows.append({'SNAPSHOT_DATE': snapshot_date, 'METRIC_KEY': f"roi_per_pick.{key_suffix}", 'METRIC_VALUE': row['ROI_PER_PICK'], 'N_PICKS': row['N_PICKS_DECISIVE'], 'TIME_WINDOW': row['TIME_WINDOW']})
     return rows
 

@@ -25,8 +25,8 @@ This repo is the GitHub Pages frontend for the NHL system. The engine writes dat
 - **Dash**: selected-player or goalie context, matchup, props, splits, and logs.
 - **Log**: game-log focused view.
 - **Picks**: AI picks, best bets, slips, streaks, due spots, props, and parlay helpers.
-- **Stats**: Pick Performance hit rate, ROI, CLV, confidence tiers, prop types, and drift checks.
-- **Game Entry**: single-game auto-entry builder.
+- **Stats**: captured-price returns, hit rate, and breakdowns by market, side, book and confidence.
+- **Game Builder**: editable single-game selections and saved entries.
 - **Info**: method notes and glossary.
 
 ## Run Mode
@@ -60,8 +60,8 @@ NHL is automated through GitHub Actions. The engine runs during the day, and the
 The frontend now follows NFLDesktop's workspace layout: compact navigation,
 a daily matchup strip, a player-analysis hero, responsive research cards, and
 shared theme colors. It retains NHL's skater/goalie, picks, logs, performance,
-and game-builder calculations. The history average describes the loaded logs;
-it is not a new-season projection model.
+and game-builder calculations. Sample averages describe the selected season and game type;
+they are not a new-season projection model.
 
 While visible, the page checks Sheets every five minutes and when returning
 after five minutes away. Refresh preserves the player, metric, line, and tab;
@@ -95,3 +95,31 @@ python3 tests/test_daily_dates.py
 These checks use fixtures and isolated engine helpers: they do not spend API
 credits or write to Sheets. A complete authenticated engine/grader run still
 requires the existing GitHub repository secrets.
+
+## NHL research expansion
+
+The daily workspace now includes:
+
+- **Dash:** current/prior regular-season and current-playoff samples, recent-game windows, over/under charts, home/away averages, ice time, goalie context and back-to-back status.
+- **Picks → Tonight’s Shortlist:** dated quotes for games that have not started, historical evidence, and a saved research tray. At least three measured games are required. Historical returns are observations, not forecasts.
+- **Lookup:** search all players in the loaded logs, including players off tonight’s slate.
+- **Leaders:** daily skater/goalie results and the pick ledger. Same-day records require a final schedule state. Coverage is limited to collected logs.
+- **Game Builder:** editable selections, captured book/price, overlap warnings, start-time locks, and locally saved entries. It does not calculate a combined same-game price.
+- **Stats:** units and ROI from each pick’s captured odds, with market, side, book and confidence breakdowns. Unpriced legacy picks are excluded from returns; pushes return the stake and DNPs are excluded.
+
+`research.js` supplies these views alongside `app.js`. `nhl_research.py` contains shared season and pricing helpers for the engine and grader; publish both new files with the existing files.
+
+The engine tags logs with season/game type, separates current and prior samples, retains new players with no current games, and captures the exact matching pick line, side, book and odds. Legacy goalie records are tagged only when matched to authoritative API logs; unknown records remain available under All loaded history. The grader retains legacy flat-price metrics for existing consumers and adds captured-price metrics.
+
+Line assignments and power-play units display “Not provided” unless the data source supplies them. A roster appearance does not establish a confirmed starting goalie. Quotes are daily snapshots, not live sportsbook feeds. Saved trays and entries stay in this browser’s local storage and do not sync across devices.
+
+Publish the frontend, engine, grader and helpers together. New fields and priced pick history begin with subsequent engine/grader runs; old unpriced history is not retroactively assigned prices.
+
+Additional fixture validation:
+
+```sh
+node --check research.js
+node tests/dashboard.cjs
+python3 -m unittest discover -s tests -p 'test_*.py'
+python3 -m py_compile NHLEngine5-4.py NHLGrader5-4.py nhl_research.py
+```

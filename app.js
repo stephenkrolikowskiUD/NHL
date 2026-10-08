@@ -14,7 +14,7 @@ const S_METRICS=["G","A","PTS","SOG","BLK","HITS","PPP","FOW","TOI","PIM","UD_FP
 const G_METRICS=["SV","GA","SV_PCT","W","SO","UD_FP","TOI"];
 
 const COMBO_STATS={"SOG+BLK":["SOG","BLK"],"BLK+HITS":["BLK","HITS"]};
-function getMetricVal(g,m){if(COMBO_STATS[m])return COMBO_STATS[m].reduce((s,k)=>s+toNum(g[k]),0);return toNum(g[m])}
+function getMetricVal(g,m){if(COMBO_STATS[m])return COMBO_STATS[m].reduce((s,k)=>s+toNum(g[k]),0);return m==="TOI"?(rrToi(g[m])||0):toNum(g[m])}
 function getRollingVal(row,prefix,m){if(COMBO_STATS[m])return COMBO_STATS[m].reduce((s,k)=>s+toNum(row[`${prefix}${k}`]),0);return toNum(row[`${prefix}${m}`])}
 
 let st={
@@ -24,7 +24,7 @@ let st={
   pickPerformance:[],pickPerformanceSnaps:[],statsTimeWindow:"last_30d",gameEntry:{selectedGame:null,legCount:GAME_ENTRY_DEFAULT_LEGS,entry:null},
   mode:"skater",player:"",metric:"PTS",line:"",
   activeTab:"dashboard",oppFilter:"",
-  picksView:"bets",propsMetric:"ALL",propsSearch:"",
+  picksView:"shortlist",propsMetric:"ALL",propsSearch:"",
   streakFilter:"all",dueFilter:"all",drafted:new Set(),slipLegs:"3",parlayStat:"PTS",
   loading:true,error:null,loadedAt:null,latestPickDate:"",pickGuard:null,dataVersion:0,theme:(localStorage.getItem("nhl-dashboard-theme")||"dark")
 };
@@ -102,7 +102,7 @@ function getTonightPlayerRow(name,isG){
 const toNum=v=>parseFloat(v)||0;
 const barColor=(v,l)=>!l?"var(--accent)":v>l?"#22c55e":v===l?"var(--ink-muted)":"#ef4444";
 const avgColor=(v,l)=>!l?"var(--accent)":v>=l?"var(--accent)":"#f97316";
-const esc=s=>{if(!s)return"";return String(s).replace(/[&<>'"]/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[t]))};
+const esc=s=>{if(s===null||s===undefined)return"";return String(s).replace(/[&<>'"]/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[t]))};
 const fmtOdds=v=>{if(!v&&v!==0)return"—";v=parseInt(v);return v>0?`+${v}`:`${v}`};
 function impliedProb(odds){if(!odds&&odds!==0)return null;const o=parseInt(odds);if(isNaN(o))return null;return o<0?Math.abs(o)/(Math.abs(o)+100):100/(o+100)}
 function cleanName(v){return String(v||"").trim()}
@@ -247,7 +247,7 @@ function playerLink(name,label=""){const n=cleanName(label||name||"");return `<s
 
 // ═══ +EV ENGINE ═══
 function getHitRate(name,metric,line,isG){
-  const logs=getPlayerLogs(name,isG);
+  const logs=rrScopeRows(getPlayerLogs(name,isG),Number(rrRoster(name,isG).GAME_TYPE)===3?"playoffs":"current");
   if(logs.length<3)return null;const ln=parseFloat(line);if(isNaN(ln))return null;
   const combo=COMBO_STATS[metric];
   let over=0,under=0,push=0;
@@ -273,6 +273,7 @@ function getBestBets(){
     if(metric==="BLK"||metric==="HITS")continue;
     const overO=parseInt(p.OVER_ODDS),underO=parseInt(p.UNDER_ODDS);if(isNaN(overO)&&isNaN(underO))continue;
     const logCol=propToLogCol(metric);const isG=isGoalieProp(metric);
+    if(!rrIsCurrent(rrRoster(name,isG))||String(p.LAST_UPDATED||"").slice(0,10)!==easternTodayISO())continue;
     const hr=getHitRate(name,logCol,line,isG);if(!hr||hr.total<3||!hr.nonPush)continue;
     const oIP=impliedProb(overO),uIP=impliedProb(underO);let oE=null,uE=null;
     if(oIP!==null)oE=hr.overRate-oIP;if(uIP!==null)uE=hr.underRate-uIP;
@@ -717,7 +718,7 @@ function renderPlayerHero(player,pT,metric,allLogs,isG){
 }
 
 function render(){
-  const focus=saveFocus();const app=document.getElementById("app");
+  const focus=saveFocus();const app=document.getElementById("app");rrState();
   if(st.loading){app.innerHTML=`<div class="loading"><div style="font-size:32px;animation:bounce .8s ease-in-out infinite">🏒</div><div style="color:var(--ink-muted);font-size:14px">Loading dashboard...</div></div>`;return}
   if(st.error){app.innerHTML=`<div class="error">⚠️ ${esc(st.error)}<br><br><span style="color:var(--ink-muted);font-size:12px">Make sure your Google Sheet is set to "Anyone with the link can view"</span><br><button class="refresh-btn" onclick="loadAllData()">Try again</button></div>`;return}
 
@@ -779,7 +780,8 @@ function render(){
   let picksHTML="";
   if(activeTab==="picks"){
     const subTabs=`<div class="sub-tabs" style="padding-top:12px">
-      <div class="sub-tab ${st.picksView==="bets"?"active":""}" onclick="switchPicksView('bets')">💰 Best Bets</div>
+      <button class="sub-tab ${st.picksView==='shortlist'?'active':''}" onclick="switchPicksView('shortlist')">Tonight’s Shortlist</button>
+      <div class="sub-tab ${st.picksView==="bets"?"active":""}" onclick="switchPicksView('bets')">Historical Signals</div>
       <div class="sub-tab ${st.picksView==="slips"?"active":""}" onclick="switchPicksView('slips')">🎫 Slips</div>
       <div class="sub-tab ${st.picksView==="picks"?"active":""}" onclick="switchPicksView('picks')">🤖 AI Picks</div>
       <div class="sub-tab ${st.picksView==="draft"?"active":""}" onclick="switchPicksView('draft')">🏒 Draft</div>
@@ -791,7 +793,8 @@ function render(){
     </div>`;
     const picksIntro=subTabs+renderConvergenceHTML();
 
-    if(st.picksView==="bets"){
+    if(st.picksView==="shortlist")picksHTML=subTabs+rrShortlist();
+    else if(st.picksView==="bets"){
       const allBets=getBestBets();const posEV=allBets.filter(b=>b.edge>0);const elite=posEV.filter(b=>b.edge>=0.15);const strong=posEV.filter(b=>b.edge>=0.08&&b.edge<0.15);
       picksHTML=picksIntro;if(!allBets.length)picksHTML+=`<div class="no-data" style="padding:40px;text-align:center">No props for +EV analysis. Run engine first.</div>`;
       else{picksHTML+=`<div class="bet-summary"><div class="bs-card"><div class="bs-val">${posEV.length}</div><div class="bs-lbl">+EV PROPS</div></div><div class="bs-card"><div class="bs-val" style="color:#ef4444">${elite.length}</div><div class="bs-lbl">ELITE (15%+)</div></div><div class="bs-card"><div class="bs-val" style="color:var(--accent)">${strong.length}</div><div class="bs-lbl">STRONG (8%+)</div></div><div class="bs-card"><div class="bs-val" style="color:var(--ink-muted)">${allBets.length}</div><div class="bs-lbl">ANALYZED</div></div></div>`;
@@ -920,14 +923,14 @@ function render(){
   app.innerHTML=`
   <div class="header">
     <div class="header-top"><div class="header-title">NHL DFS Dashboard</div><div style="display:flex;gap:8px"><button class="theme-btn" id="themeBtn">${st.theme==="light"?"🌙 Dark":"☀️ Light"}</button><button class="refresh-btn" id="refreshBtn" ${st.refreshing?"disabled":""}>${st.refreshing?"Refreshing…":"↻ Refresh"}</button></div></div>
-    <div class="top-nav">
-      <button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">Dashboard</button>
-      <button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">Game Logs</button>
-      <button class="tab-btn ${activeTab==="picks"?"active":""}" onclick="switchTab('picks')">Picks</button>
-      <button class="tab-btn ${activeTab==="stats"?"active":""}" onclick="switchTab('stats')">Performance</button>
-      <button class="tab-btn ${activeTab==="entry"?"active":""}" onclick="switchTab('entry')">Game Builder</button>
-      <button class="tab-btn ${activeTab==="method"?"active":""}" onclick="switchTab('method')">Info</button>
-    </div>
+    <div class="top-nav"><button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">Dashboard</button>
+<button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">Game Logs</button>
+<button class="tab-btn ${activeTab==="picks"?"active":""}" onclick="switchTab('picks')">Picks</button>
+<button class="tab-btn ${activeTab==="entry"?"active":""}" onclick="switchTab('entry')">Builder</button>
+<button class="tab-btn ${activeTab==="lookup"?"active":""}" onclick="switchTab('lookup')">Lookup</button>
+<button class="tab-btn ${activeTab==="leaders"?"active":""}" onclick="switchTab('leaders')">Leaders</button>
+<button class="tab-btn ${activeTab==="stats"?"active":""}" onclick="switchTab('stats')">Performance</button>
+<button class="tab-btn ${activeTab==="method"?"active":""}" onclick="switchTab('method')">Info</button></div>
     ${showCtrl?`<div class="header-controls">
       <div class="mode-toggle">
         <button type="button" class="mode-btn" onclick="switchMode('skater')" style="${st.mode==='skater'?'background:var(--accent);color:var(--surface-0);border-color:var(--accent)':'background:var(--surface-1);color:var(--ink-muted)'}">🏒 Skaters</button>
@@ -945,49 +948,23 @@ function render(){
   </div>
 
   ${renderDailySlate()}
-  <div class="page ${activeTab==="dashboard"?"active":""}">
-    ${renderPlayerHero(player,pT,metric,allLogs,isG)}
-    ${earlyBanner}
-    ${pHasLogs?`<div class="stats-strip"><div class="stats-strip-inner">${statStrip}</div></div>`:""}
-    <div class="dash-grid" ${player?"":"hidden"}>
-    ${pHasLogs?`<div class="section"><div class="label">Game Log — ${metric}</div><div class="bar-chart">${bars}</div>${lineNum?`<div class="line-indicator">Line: ${lineNum}</div>`:""}</div>`:""}
-    ${pHasLogs?`<div class="section"><div class="label">Averages</div><div class="avg-cards">${avgs}</div></div>`:""}
-    <div class="section"><div class="split-row">
-      <div class="split-card"><span class="split-title">${isG?"Season Rates":`vs ${esc(pT.opp_goalie_name||"TBD")}`}</span>${isG?`<div class="matchup-card" style="padding:0;background:none"><div class="matchup-sub">${esc(pT.opp_abbr_tonight||"")} · ${esc(pT.starter_status||"—")}</div><div class="hit-row" style="border:none"><span class="hit-key">Starter Status</span><span class="hit-val">${pT.starter_status||"—"}</span></div></div>`:`<div class="matchup-card" style="padding:0;background:none"><div class="matchup-sub">${esc(pT.opp_abbr_tonight||"")} · ${esc(pT.opp_goalie_name||"TBD")}</div><div class="hit-row" style="border:none"><span class="hit-key">Opp Goalie Status</span><span class="hit-val">${pT.opp_goalie_status||"—"}</span></div><div class="hit-row"><span class="hit-key">H2H Games</span><span class="hit-val">${Math.round(toNum(pT.H2H_GP))}</span></div><div class="hit-row"><span class="hit-key">H2H PTS / SOG</span><span class="hit-val">${toNum(pT.H2H_PTS).toFixed(2)} / ${toNum(pT.H2H_SOG).toFixed(2)}</span></div><div class="hit-row"><span class="hit-key">H2H UD FP</span><span class="hit-val">${toNum(pT.H2H_UD_FP).toFixed(1)}</span></div></div>`}</div>
-      <div class="split-card"><span class="split-title">Home / Away</span><div class="mini-bars-container">${haBars}</div></div>
-    </div></div>
-    <div class="section"><div class="card"><div class="card-title">⚡ Vegas</div><div class="hit-row" style="border:none"><span class="hit-key">${esc(pT.team_abbr||"—")} vs ${esc(pT.opp_abbr_tonight||"—")}</span><span class="hit-val">${pT.SPREAD||"—"}</span></div><div class="hit-row"><span class="hit-key">Moneyline</span><span class="hit-val">${pT.MONEYLINE||"—"}</span></div><div class="hit-row"><span class="hit-key">Game Total</span><span class="hit-val">${pT.GAME_TOTAL||"—"}</span></div><div class="hit-row"><span class="hit-key">Team Implied</span><span class="hit-val">${pT.IMPLIED_TOTAL||"—"}</span></div></div></div>
-    ${lineNum&&pHasLogs?`<div class="section dash-full"><div class="card"><div class="card-title">📊 Hit Rates — ${metric} > ${lineNum}</div><div class="hit-row" style="border:none"><span class="hit-key">L5</span><span class="hit-val">${hL5}/${Math.min(5,allLogs.length)}</span></div><div class="hit-row"><span class="hit-key">Loaded history</span><span class="hit-val">${hSeas}/${allLogs.length} (${sRate!==null?(sRate*100).toFixed(0):"—"}%)</span></div></div></div>`:""}
-    </div>
-    ${pickBanner?`<div class="dash-bottom">${pickBanner}</div>`:""}
-    ${propsHTML?`<div class="dash-bottom dash-props">${propsHTML}</div>`:""}
-    <div class="timestamp">As of: ${fmtNowEastern()} · Data: ${esc(lastUp)}${st.loadedAt?` · Loaded: ${st.loadedAt}`:""}</div>
-    <div class="timestamp" style="color:var(--border-1);font-size:9px;padding-top:0">Made by S. Krolikowski w/ Claude · 2026</div>
-  </div>
+  <div class="page ${activeTab==="dashboard"?"active":""}">${activeTab==="dashboard"?rrDashboard():""}</div>
   <div class="page ${activeTab==="gamelog"?"active":""}">${logHTML}</div>
   <div class="page ${activeTab==="picks"?"active":""}">${picksHTML}</div>
-  <div class="page ${activeTab==="stats"?"active":""}">${renderStatsView()}</div>
-  <div class="page ${activeTab==="entry"?"active":""}">${renderGameEntryView()}</div>
-  <div class="page ${activeTab==="method"?"active":""}">
-    <div style="padding:16px"><div style="text-align:center;margin-bottom:16px"><div style="font-size:28px;margin-bottom:4px">🏒</div><div style="color:var(--accent);font-weight:800;font-size:16px">How This Dashboard Works</div><div style="color:#93c5fd;font-size:11px;margin-top:4px">Under the hood of the NHL DFS Engine</div></div>
-      <div class="card" style="margin-bottom:10px"><div class="card-title">📡 Data Sources</div><div style="font-size:12px;color:var(--ink-1);line-height:1.6"><div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">NHL API</span> — Skater/goalie game logs, team stats, tonight's schedule.</div><div style="margin-bottom:6px"><span style="color:var(--accent);font-weight:700">The Odds API</span> — Live spreads, totals, and player props.</div><div><span style="color:var(--accent);font-weight:700">Google Sheets</span> — Central warehouse. Engine writes 8+ tabs; app reads live.</div></div></div>
-      <div class="card" style="margin-bottom:10px"><div class="card-title">⚙️ Calculations</div><div style="font-size:12px;color:var(--ink-1);line-height:1.6"><span style="color:var(--accent);font-weight:700">Rolling Averages</span> L3/L5/Season · <span style="color:var(--accent);font-weight:700">Splits</span> Home/Away · <span style="color:var(--accent);font-weight:700">BLK/HITS</span> from boxscores · <span style="color:var(--accent);font-weight:700">EV%</span> hit rate vs implied odds · <span style="color:var(--accent);font-weight:700">Line Movement</span> snapshot diffs</div></div>
-      <div class="card" style="margin-bottom:10px"><div class="card-title">🤖 AI Picks — Gemini</div><div style="font-size:12px;color:var(--ink-1);line-height:1.6">Gemini 2.5 Flash Lite receives 46 skaters with stats + DK lines. Props-only filter. Returns 12 ranked picks with SMASH/STRONG/LEAN.</div></div>
-      <div class="card" style="margin-bottom:10px"><div class="card-title">💰 Best Bets & 🎫 Slips</div><div style="font-size:12px;color:var(--ink-1);line-height:1.6">EV engine compares hit rates to implied odds. Slips combine EV + AI + streaks into conviction-scored parlays.</div></div>
-      <div class="card" style="margin-bottom:10px"><div class="card-title">🧊 They're Due</div><div style="font-size:12px;color:var(--ink-1);line-height:1.6">Finds cold skaters with strong season averages and favorable matchups tonight. Regression to the mean + soft goaltending = buy low.</div></div>
-      <div class="card" style="margin-bottom:10px"><div class="card-title">📖 Abbreviations</div><div style="font-size:12px;color:var(--ink-1);line-height:1.7">G — Goals · A — Assists · PTS — Points · SOG — Shots on Goal<br>BLK — Blocked Shots · HITS — Hits · PPP — Power Play Points<br>TOI — Time on Ice · PIM — Penalty Minutes · +/- — Plus/Minus<br>SV — Saves · GA — Goals Against · SV% — Save Percentage<br>UD_FP — Underdog Fantasy Points<br>EV% — Expected Value (hit rate minus implied odds)<br>SMASH/STRONG/LEAN — AI confidence tiers<br>L3/L5 — Last 3/5 game averages · Seas — Season average<br>PK% — Penalty Kill Percentage · GA/G — Goals Against per Game<br>O/U — Over/Under (game total) · ML — Moneyline</div></div>
-      <div class="card" style="margin-bottom:10px;border:1px solid var(--border-1)"><div class="card-title">🙏 Credits</div><div style="font-size:12px;color:var(--ink-1);line-height:1.6"><div>Built by <span style="color:var(--accent);font-weight:700">Stephen Krolikowski</span></div><div>AI: <span style="color:var(--accent);font-weight:700">Gemini 2.5 Flash Lite</span> · App: <span style="color:var(--accent);font-weight:700">Claude</span> by Anthropic</div><div>Engine + dashboard fixes with <span style="color:var(--accent);font-weight:700">Codex</span> by OpenAI</div><div>Props: <span style="color:var(--accent);font-weight:700">The Odds API</span> · Data: <span style="color:var(--accent);font-weight:700">NHL API</span> (api-web.nhle.com)</div></div></div>
-      <div style="text-align:center;color:#555;font-size:9px;padding:8px 0 20px">For entertainment & research purposes only.</div>
-    </div>
-  </div>
-  <div class="tab-bar">
-    <button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">Dashboard</button>
-    <button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">Game Logs</button>
-    <button class="tab-btn ${activeTab==="picks"?"active":""}" onclick="switchTab('picks')">Picks</button>
-    <button class="tab-btn ${activeTab==="stats"?"active":""}" onclick="switchTab('stats')">Performance</button>
-    <button class="tab-btn ${activeTab==="entry"?"active":""}" onclick="switchTab('entry')">Builder</button>
-    <button class="tab-btn ${activeTab==="method"?"active":""}" onclick="switchTab('method')">Info</button>
-  </div>`;
+  <div class="page ${activeTab==="stats"?"active":""}">${activeTab==="stats"?rrPerformanceView():""}</div>
+  <div class="page ${activeTab==="entry"?"active":""}">${activeTab==="entry"?rrBuilder():""}</div>
+  <div class="page ${activeTab==="lookup"?"active":""}">${activeTab==="lookup"?rrLookup():""}</div>
+  <div class="page ${activeTab==="leaders"?"active":""}">${activeTab==="leaders"?rrLeaders():""}</div>
+  <div class="page ${activeTab==="method"?"active":""}">${activeTab==="method"?rrInfo():""}</div>
+  ${rrState().copyFallback?`<section class="rr-panel"><label>Copy selections<textarea readonly>${esc(rrState().copyFallback)}</textarea></label></section>`:""}
+  <div class="tab-bar"><button class="tab-btn ${activeTab==="dashboard"?"active":""}" onclick="switchTab('dashboard')">Dashboard</button>
+<button class="tab-btn ${activeTab==="gamelog"?"active":""}" onclick="switchTab('gamelog')">Game Logs</button>
+<button class="tab-btn ${activeTab==="picks"?"active":""}" onclick="switchTab('picks')">Picks</button>
+<button class="tab-btn ${activeTab==="entry"?"active":""}" onclick="switchTab('entry')">Builder</button>
+<button class="tab-btn ${activeTab==="lookup"?"active":""}" onclick="switchTab('lookup')">Lookup</button>
+<button class="tab-btn ${activeTab==="leaders"?"active":""}" onclick="switchTab('leaders')">Leaders</button>
+<button class="tab-btn ${activeTab==="stats"?"active":""}" onclick="switchTab('stats')">Performance</button>
+<button class="tab-btn ${activeTab==="method"?"active":""}" onclick="switchTab('method')">Info</button></div>`;
 
   document.getElementById("metricSel")?.addEventListener("change",e=>{st.metric=e.target.value;render()});
   document.getElementById("lineInput")?.addEventListener("change",e=>{st.line=e.target.value;render()});
@@ -996,6 +973,7 @@ function render(){
   document.getElementById("oppFilter")?.addEventListener("change",e=>{st.oppFilter=e.target.value;render()});
   document.getElementById("propsSearchInput")?.addEventListener("input",e=>{st.propsSearch=e.target.value;render()});
   document.querySelectorAll("[data-slate-player]").forEach(el=>el.addEventListener("click",()=>streakToDash(el.dataset.slatePlayer)));
+  rrBind();
   applyTheme();
   restoreFocus(focus);
 }
@@ -1016,10 +994,12 @@ function loadAllData(){
     fetchSheet("Daily_Picks").catch(()=>[]),
     fetchSheet("Pick_Performance").catch(()=>[]),
     fetchSheet("Pick_Performance_Snapshots").catch(()=>[]),
-    fetchSheet("Slate_Status").catch(()=>[])
-  ]).then(([tonight,logs,gTonight,gLogs,splits,gSplits,props,picks,pickPerformance,pickPerformanceSnaps,slateStatus])=>{
+    fetchSheet("Slate_Status").catch(()=>[]),
+    fetchSheet("Schedule").catch(()=>[])
+  ]).then(([tonight,logs,gTonight,gLogs,splits,gSplits,props,picks,pickPerformance,pickPerformanceSnaps,slateStatus,schedule])=>{
     if(!tonight||!logs)throw new Error("Required player sheets unavailable");
     resetDerived();
+    st.schedule=normalizeKeys(cleanRows(schedule||[]));
     st.slateStatus=normalizeKeys(cleanRows(slateStatus||[]))[0]||{};
     st.tonight=normalizeKeys(cleanRows(tonight));
     st.gameLogs=normalizeKeys(cleanRows(logs));
