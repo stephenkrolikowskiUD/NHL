@@ -16,6 +16,11 @@ code=code.replace('const fetchSheet=', 'let fetchSheet=');
 vm.runInContext(readFileSync(path.join(__dirname,'../research.js'),'utf8'),ctx);
 vm.runInContext(code,ctx);
 const run=s=>vm.runInContext(s,ctx);
+assert.match(run(`nhlTeamLabel('bos')`),/BOS_light\.svg/);
+assert.match(run(`nhlTeamLabel('bos')`),/>BOS<\/span>/);
+assert.match(run(`nhlTeamLabel('')`),/>TBD<\/span>/);
+assert.doesNotMatch(run(`nhlTeamLabel('<script>')`),/<img|<script>/);
+assert.match(run(`renderPlayerHero('Test',{team_abbr:'BOS',opp_abbr_tonight:'NYR'},'PTS',[],false)`),/NYR_light\.svg/);
 run(`st.loading=false;st.loadedAt='1:00 PM';st.slateStatus={SLATE_DATE:easternTodayISO(),GAME_COUNT:0};render()`);
 assert.match(app.innerHTML,/No games scheduled today/);
 for(const view of ['dashboard','gamelog','picks','stats','entry','method','lookup','leaders']){

@@ -1,5 +1,10 @@
 /* NHL research workspace. Historical observations are not forecast probabilities. */
 const RR_STORAGE='nhl-research-v1';
+function nhlTeamLabel(value){
+  const team=String(value||'').trim().toUpperCase();
+  const safe=/^[A-Z]{2,3}$/.test(team);
+  return `<span class="nhl-team-label">${safe?`<img class="nhl-team-logo" src="https://assets.nhle.com/logos/nhl/svg/${team}_light.svg" alt="" width="28" height="28" loading="lazy" decoding="async" onerror="this.remove()"/>`:''}<span>${esc(team||'TBD')}</span></span>`;
+}
 function rrRead(){try{const x=JSON.parse(localStorage.getItem(RR_STORAGE)||'{}');return x&&typeof x==='object'?x:{}}catch{return {}}}
 function rrState(){if(!st.research){const saved=rrRead();st.research={scope:'current',window:10,lean:'OVER',lookup:'',lookupMode:'skater',lookupPlayer:'',lookupMetric:'PTS',leadersDate:'',leadersMetric:'PTS',leadersMode:'skater',shortMetric:'ALL',shortScope:'current',tray:Array.isArray(saved.tray)?saved.tray.filter(x=>x&&typeof x==='object').slice(0,100):[],savedEntries:Array.isArray(saved.savedEntries)?saved.savedEntries.filter(x=>x&&typeof x==='object'&&Array.isArray(x.legs)).slice(0,20):[],builderGame:'',builderLegs:[],notice:''}}return st.research}
 function rrPersist(){const r=rrState();try{localStorage.setItem(RR_STORAGE,JSON.stringify({tray:r.tray,savedEntries:r.savedEntries}));return true}catch{r.notice='Browser storage is unavailable. These selections will last only for this session.';return false}}

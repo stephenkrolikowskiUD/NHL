@@ -123,3 +123,9 @@ node tests/dashboard.cjs
 python3 -m unittest discover -s tests -p 'test_*.py'
 python3 -m py_compile NHLEngine5-4.py NHLGrader5-4.py nhl_research.py
 ```
+## November 2: Dashboard Team Logos
+
+Daily slate matchups and player-analysis headers now display NHL-hosted team
+logos beside the abbreviations. Missing images fall back to the retained text;
+unknown teams display TBD. This is frontend-only: push and refresh the page,
+with no engine rerun or Odds API usage required.

@@ -708,13 +708,13 @@ function renderDailySlate(){
       const label=ms?new Date(ms).toLocaleTimeString('en-US',{timeZone:'America/New_York',hour:'numeric',minute:'2-digit'})+' ET':'Time TBA';
       const away=r.home_away_tonight==='Home'?r.opp_abbr_tonight:r.team_abbr;
       const home=r.home_away_tonight==='Home'?r.team_abbr:r.opp_abbr_tonight;
-      return `<button class="slate-game" data-slate-player="${esc(r.player_name)}"><span>${esc(away)} <i>@</i> ${esc(home)}</span><small>${stale?'Previous slate · ':''}${label}</small></button>`;
+      return `<button class="slate-game" data-slate-player="${esc(r.player_name)}"><span class="nhl-matchup">${nhlTeamLabel(away)} <i>@</i> ${nhlTeamLabel(home)}</span><small>${stale?'Previous slate · ':''}${label}</small></button>`;
     }).join('')||`<div class="slate-empty">${snapshot===easternTodayISO()&&Number(status.GAME_COUNT)===0?'No games scheduled today. Picks and performance history remain available.':'No player slate is available yet. Refresh after the next engine run.'}</div>`}</div>
   </section>`;
 }
 function renderPlayerHero(player,pT,metric,allLogs,isG){
   if(!player)return `<section class="analysis-hero"><div class="analysis-eyebrow">PLAYER ANALYSIS</div><h2>Waiting for the next slate</h2><p>Skater and goalie research will appear when the daily data is ready.</p></section>`;
-  return `<section class="analysis-hero"><div class="analysis-hero-top"><div><div class="analysis-eyebrow">${isG?'GOALIE':'SKATER'} ANALYSIS</div><h2>${esc(player)}</h2><p>${esc(pT.team_abbr||'—')} · ${esc(pT.position|| (isG?'G':'Skater'))} · ${pT.home_away_tonight==='Away'?'at':'vs'} ${esc(pT.opp_abbr_tonight||'TBD')}${isG?' · '+esc(pT.starter_status||'Starter unconfirmed'):''}</p></div><div class="analysis-focus"><strong>${esc(metric)}</strong><span>${allLogs.length} games in loaded history</span></div></div></section>`;
+  return `<section class="analysis-hero"><div class="analysis-hero-top"><div><div class="analysis-eyebrow">${isG?'GOALIE':'SKATER'} ANALYSIS</div><h2>${esc(player)}</h2><p class="nhl-matchup">${nhlTeamLabel(pT.team_abbr)} · ${esc(pT.position|| (isG?'G':'Skater'))} · ${pT.home_away_tonight==='Away'?'at':'vs'} ${nhlTeamLabel(pT.opp_abbr_tonight)}${isG?' · '+esc(pT.starter_status||'Starter unconfirmed'):''}</p></div><div class="analysis-focus"><strong>${esc(metric)}</strong><span>${allLogs.length} games in loaded history</span></div></div></section>`;
 }
 
 function render(){
