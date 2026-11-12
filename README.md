@@ -6,6 +6,12 @@ This repo is the GitHub Pages frontend for the NHL system. The engine writes dat
 
 ## What It Does
 
+### Mobile Streaks fix (2026-11-12)
+
+- Fixed mismatched filter tags that could nest the Streaks cards inside the horizontally scrolling filter row.
+- Filters now use real buttons with selected-state accessibility; long player and matchup details wrap without pushing the streak count offscreen.
+- Frontend-only change: deploy GitHub Pages and refresh the phone. No engine run or API credits required.
+
 - Shows skater and goalie context for tonight's slate: game logs, home/away splits, starter status, opponent context, props, and AI picks.
 - Supports both skater and goalie workflows, including save props, shots, hits, points, and related boards.
 - Surfaces best bets, smart slips, streaks, due spots, props, Stats, and Game Entry views.

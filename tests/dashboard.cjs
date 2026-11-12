@@ -28,6 +28,16 @@ for(const view of ['dashboard','gamelog','picks','stats','entry','method','looku
 }
 run(`st.slateStatus={SLATE_DATE:'2025-01-01',GAME_COUNT:1};render()`);
 assert.match(app.innerHTML,/Older snapshot/);
+// Filter controls must close before the cards, not swallow them into a flex row.
+run(`originalStreaks=getStreaks;getStreaks=()=>[{player:'Long Player Name',team:'BOS',opp:'NYR',propType:'skt',streak:4,label:'Point Streak',emoji:'',desc:'games with a point',recentVals:[1,2,1,1],threshold:1,avgDuring:'1.25',seasAvg:'1.00'}];st.streakFilter='all';st.picksView='streaks';switchTab('picks')`);
+const streakFilters=app.innerHTML.match(/<div class="streak-filters">([\s\S]*?)<\/div><div class="cards-grid">/);
+assert.ok(streakFilters,'Streak cards must be siblings of the filters');
+assert.equal((streakFilters[1].match(/<button\b/g)||[]).length,3);
+assert.equal((streakFilters[1].match(/<\/button>/g)||[]).length,3);
+assert.doesNotMatch(streakFilters[1],/<div\b/);
+assert.match(streakFilters[1],/aria-pressed="true"/);
+run(`setStreakFilter('gol')`);assert.match(app.innerHTML,/No active streaks/);
+run(`getStreaks=originalStreaks;st.streakFilter='all';st.picksView='shortlist'`);
 // A small named fixture exercises refresh success/failure without touching Sheets.
 run(`fixture={Tonights_Skaters:[{player_name:'Test Skater',team_abbr:'BOS',opp_abbr_tonight:'NYR'}],Skater_Game_Logs:[{player_name:'Test Skater',game_date:'2026-10-06',PTS:1}],Tonights_Goalies:[{player_name:'Test Goalie',team_abbr:'NYR',opp_abbr_tonight:'BOS'}],Goalie_Game_Logs:[{player_name:'Test Goalie',game_date:'2026-10-06',SV:20}],Slate_Status:[{SLATE_DATE:easternTodayISO(),GAME_COUNT:1,PROP_COUNT:0}]};fetchSheet=async name=>fixture[name]||[];st.mode='goalie';st.player='Test Goalie';st.metric='SV';st.line='22.5';st.activeTab='gamelog';st.oppFilter='BOS'`);
 async function refresh(){run('loadAllData()');await new Promise(resolve=>setImmediate(resolve));}

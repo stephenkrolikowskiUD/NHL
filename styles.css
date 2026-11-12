@@ -182,12 +182,12 @@ td.push{color:var(--ink-muted);font-weight:700}
 /* ═══ Streaks ═══ */
 .streak-card{background:var(--surface-1);border-radius:10px;padding:12px 14px;margin:0 16px 8px;border-left:3px solid #ffd966;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:transform .15s,box-shadow .15s}
 .streak-card.fire{border-left-color:#ff6b35}.streak-card.inferno{border-left-color:#ef4444}.streak-card.hot{border-left-color:#ffaa00}
-.streak-left{flex:1}
+.streak-left{flex:1;min-width:0;overflow-wrap:anywhere}
 .streak-emoji{font-size:14px;margin-right:4px}
 .streak-name{font-weight:700;font-size:14px}
 .streak-label{font-size:10px;font-weight:600;color:#ffaa00;margin-left:6px}
 .streak-meta{color:var(--accent-soft);font-size:11px;margin-top:2px}
-.streak-right{text-align:right;min-width:55px}
+.streak-right{text-align:right;min-width:55px;flex-shrink:0;margin-left:10px}
 .streak-count{font-size:22px;font-weight:800;color:#ffaa00}
 .streak-card.fire .streak-count{color:#ff6b35}.streak-card.inferno .streak-count{color:#ef4444}
 .streak-sub{font-size:9px;color:var(--ink-muted);margin-top:1px}
