@@ -87,6 +87,7 @@ async function refresh(){run('loadAllData()');await new Promise(resolve=>setImme
   run(`switchTab('leaders')`);assert.match(app.innerHTML,/Daily leaders/);
   run(`switchTab('stats')`);assert.match(app.innerHTML,/Actual ROI/);
   assert.match(app.innerHTML,/Publication evidence/);
+  assert.match(run("renderPublicationEvidence([{TIME_WINDOW:'all_time',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'RECONSTRUCTED_PREGAME_FEED',N_PICKS_DECISIVE:2,HIT_RATE:0.5,ACTUAL_ROI_PCT:-5}], 'all_time')"),/Reconstructed pregame feed/);
   assert.match(run("renderPublicationEvidence([{TIME_WINDOW:'all_time',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'VERIFIED_PREGAME_FEED',N_PICKS_DECISIVE:2,HIT_RATE:0.5,ACTUAL_ROI_PCT:-5}], 'all_time')"),/Verified pregame feed.*2 decisive.*-5.0%/);
   console.log('PASS: eight views, refresh recovery, season isolation, pushes, TOI, shortlist, tray price persistence, builder conflicts/locks, lookup, leaders and actual returns');
 })().catch(e=>{console.error(e);process.exitCode=1});
