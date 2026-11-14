@@ -382,7 +382,7 @@ def pick_perf_prepare_df(df_all):
     df['date_parsed'] = pd.to_datetime(df.get('DATE', pd.Series('', index=idx)), errors='coerce')
     bad_dates = int(df['date_parsed'].isna().sum())
     if bad_dates:
-        print(f"   ⚠️ Pick_Performance: {bad_dates} graded rows have unparseable DATE and count only all_time")
+        print(f"   ⚠️ Pick_Performance: {bad_dates} graded rows have unparseable DATE and are excluded from date windows")
     df['day_of_week'] = df['date_parsed'].dt.strftime('%a').fillna('unknown')
     if 'RUN_NUMBER' not in df.columns:
         df['RUN_NUMBER'] = 'unknown'
@@ -445,10 +445,12 @@ def pick_perf_metrics_row(df_slice, dim_type, dim_value, window_name):
     }
 
 def pick_perf_window_df(df, window_name, days, today):
+    # N calendar dates including today, matching the dashboard's Eastern window.
+    valid = df['date_parsed'].notna() & (df['date_parsed'] <= pd.Timestamp(today))
     if days is None:
-        return df.copy()
-    cutoff = pd.Timestamp(today - timedelta(days=days))
-    return df[df['date_parsed'].notna() & (df['date_parsed'] >= cutoff)].copy()
+        return df[valid].copy()
+    cutoff = pd.Timestamp(today - timedelta(days=days - 1))
+    return df[valid & (df['date_parsed'] >= cutoff)].copy()
 
 def build_pick_performance_metrics(df_all):
     df = pick_perf_prepare_df(df_all)

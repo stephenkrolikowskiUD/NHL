@@ -2,6 +2,12 @@
 
 ## Publication evidence (2026-11-13)
 
+### Matching reporting windows
+
+The grader and dashboard now use exactly 7, 30, or 90 calendar dates including today in Eastern time. Previously the grader included an extra day. On November 13, its 30-day summary included October 14 (21 decisive picks: 7 wins and 14 losses), while the dashboard correctly began October 15. That explains the 516 versus 495 decisive-pick discrepancy. Invalid and future dates are excluded consistently, including all-time results.
+
+The dashboard flags publication-cohort totals that differ from the loaded ledger instead of silently presenting them as comparable. Push this update, rerun the NHL grader, and refresh the dashboard to rebuild the summaries. No engine run or Odds API credits are needed. This corrects reporting boundaries, not grades or pick selection.
+
 ### Historical reconstruction
 
 The grader now reads Run_Log to classify older picks as RECONSTRUCTED_PREGAME_FEED when one matching engine run succeeded (OK/WARN, no error), logged a positive Daily_Picks write count, and finished before the stored game start. Matching uses run/publication ID first, then a unique explicit-timezone RUN_TIME interval for legacy rows. Ambiguous, missing, failed, or late evidence never becomes a pregame success. A failed or altered direct receipt cannot be rescued by reconstruction.

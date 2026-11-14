@@ -89,5 +89,10 @@ async function refresh(){run('loadAllData()');await new Promise(resolve=>setImme
   assert.match(app.innerHTML,/Publication evidence/);
   assert.match(run("renderPublicationEvidence([{TIME_WINDOW:'all_time',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'RECONSTRUCTED_PREGAME_FEED',N_PICKS_DECISIVE:2,HIT_RATE:0.5,ACTUAL_ROI_PCT:-5}], 'all_time')"),/Reconstructed pregame feed/);
   assert.match(run("renderPublicationEvidence([{TIME_WINDOW:'all_time',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'VERIFIED_PREGAME_FEED',N_PICKS_DECISIVE:2,HIT_RATE:0.5,ACTUAL_ROI_PCT:-5}], 'all_time')"),/Verified pregame feed.*2 decisive.*-5.0%/);
-  console.log('PASS: eight views, refresh recovery, season isolation, pushes, TOI, shortlist, tray price persistence, builder conflicts/locks, lookup, leaders and actual returns');
+  assert.equal(run(`JSON.stringify(rrPerformanceWindow(['2026-10-14','2026-10-15','2026-11-13','2026-11-14','bad'].map(DATE=>({DATE})), 'last_30d', '2026-11-13').map(p=>p.DATE))`),JSON.stringify(['2026-10-15','2026-11-13']));
+  assert.equal(run(`rrPerformanceWindow([{DATE:'2026-11-14'},{DATE:'bad'},{DATE:'2026-10-14'}], 'all_time', '2026-11-13').length`),1);
+  const publicationFixture = "[{TIME_WINDOW:'last_30d',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'RECONSTRUCTED_PREGAME_FEED',N_PICKS_DECISIVE:435},{TIME_WINDOW:'last_30d',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'LATE_OR_UNVERIFIED',N_PICKS_DECISIVE:81}]";
+  assert.match(run(`renderPublicationEvidence(${publicationFixture},'last_30d',495)`),/Counts differ/);
+  assert.doesNotMatch(run(`renderPublicationEvidence(${publicationFixture},'last_30d',516)`),/Counts differ/);
+  console.log('PASS: dashboard views, publication reconciliation, date windows and actual returns');
 })().catch(e=>{console.error(e);process.exitCode=1});
