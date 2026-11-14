@@ -301,8 +301,8 @@ def pick_perf_clean_cell(val):
         return ''
     return val
 
-def pick_perf_safe_upload(spreadsheet, sheet_name, df):
-    if df is None or df.empty:
+def pick_perf_safe_upload(spreadsheet, sheet_name, df, *, allow_empty=False):
+    if df is None or (df.empty and not allow_empty):
         print(f"   ⏭️  {sheet_name}: No data — skipped")
         return False
     df_clean = df.copy().replace([np.inf, -np.inf], np.nan).fillna('')
@@ -1001,6 +1001,11 @@ ws_fresh = sh.worksheet('Daily_Picks')
 all_fresh = ws_fresh.get_all_records()
 df_all = pd.DataFrame(all_fresh)
 df_all = annotate(df_all, sh, 'NHL')
+from publication_ledger import comparison_report
+comparison, comparison_audit = comparison_report(df_all, sh, 'NHL')
+for tab, data in (('Comparison_Performance', comparison), ('Comparison_Audit', comparison_audit)):
+    if not pick_perf_safe_upload(sh, tab, data, allow_empty=True):
+        raise RuntimeError('Could not publish ' + tab)
 audit_columns = [c for c in ('DATE', 'RUN_ID', 'RUN_TIME', 'PUBLICATION_ID', 'player',
     'prop_type', 'lean', 'line', 'COMMENCE_TIME', 'publication_cohort',
     'publication_evidence_run_id', 'publication_evidence_finished_at',
