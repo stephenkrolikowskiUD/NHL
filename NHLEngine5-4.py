@@ -27,6 +27,7 @@ import pandas as pd
 import numpy as np
 from google.oauth2.service_account import Credentials
 from run_logger import RunLogger
+from publication_ledger import identify, publish_receipts
 from nhl_research import annotate_log, season_rows, season_summary, capture_pick_price
 
 # ═══════════════════════════════════════════════
@@ -2266,6 +2267,7 @@ if daily_picks:
         runlog.picks_generated = len(daily_picks)
     except Exception:
         pass
+    daily_picks = identify(daily_picks, runlog.run_id, 'NHL')
     append_upload("Daily_Picks", pd.DataFrame(daily_picks))
 
 # ═══════════════════════════════════════════════
@@ -2273,7 +2275,17 @@ if daily_picks:
 # ═══════════════════════════════════════════════
 print(f"\n{'='*50}")
 safe_upload("Slate_Status", [{"SLATE_DATE": TODAY, "GAME_COUNT": len(games), "PROP_COUNT": len(all_props),
-    "LAST_UPDATED": datetime.now(EASTERN).isoformat(), "STATUS": "READY"}])
+    "LAST_UPDATED": datetime.now(EASTERN).isoformat(), "STATUS": "READY", "RUN_ID": runlog.run_id}])
+try:
+    status_rows = wb.worksheet('Slate_Status').get_all_records()
+    if len(status_rows) != 1 or status_rows[0].get('RUN_ID') != runlog.run_id:
+        raise RuntimeError('Slate publication readback failed; no receipts recorded')
+    publish_receipts(wb, daily_picks, 'NHL')
+except Exception as error:
+    runlog.fail(error)
+    safe_upload('Slate_Status', [{'SLATE_DATE': TODAY, 'STATUS': 'FAILED',
+        'RUN_ID': runlog.run_id, 'LAST_UPDATED': datetime.now(EASTERN).isoformat()}])
+    raise
 print(f"🏒 NHL ENGINE v1.2 — RUN COMPLETE")
 print(f"{'='*50}")
 print(f"  📅 Date: {TODAY}")

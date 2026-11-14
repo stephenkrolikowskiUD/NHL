@@ -1,5 +1,15 @@
 # NHL DFS Dashboard
 
+## Publication evidence (2026-11-13)
+
+The engine assigns each emitted pick a publication ID and verifies its saved player, market, side, line, captured price, and game start against Daily_Picks. After feed/status readback it appends a snapshot to Publication_Ledger and verifies that receipt. Failed verification fails the run and marks the slate failed.
+
+The grader reports publication_cohort separately: VERIFIED_PREGAME_FEED, UNVERIFIED_CAPTURE, and LATE_OR_UNVERIFIED. Stats shows these groups without relabeling the existing overall record. Research labels and selection rules are unchanged. This proves availability in the research feed, not a browser impression, dynamic shortlist selection, or predictive validation. Repeated publications are not independent bets; existing sport-specific performance eligibility/deduplication remains in effect.
+
+Deployment: push the engine, grader, helper, and frontend together. The next engine run creates the ledger; the following grader run produces cohorts. Running only the grader cannot reconstruct historical publication evidence. No historical rows are retroactively marked verified. Missing ledger tabs classify existing captures as unverified; other ledger read errors stop grading rather than silently downgrade evidence.
+
+Validation: offline publication fixtures cover readback mismatch, late publication, numeric round trips, immutable selection snapshots, and retry identity. Live Sheets publication and physical-device verification are still required after deployment.
+
 A personal NHL player-prop research dashboard for turning daily hockey data, live prop markets, AI picks, and grader feedback into one mobile-first view.
 
 This repo is the GitHub Pages frontend for the NHL system. The engine writes data to Google Sheets, the grader closes the loop after games, and `index.html` + `app.js` + `styles.css` read the workbook through public Sheets CSV endpoints.
