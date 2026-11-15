@@ -85,7 +85,7 @@ async function refresh(){run('loadAllData()');await new Promise(resolve=>setImme
   run(`st.schedule=[{GAME_DATE:easternTodayISO(),GAME_ID:'123',GAME_STATE:'FINAL'}];st.gameLogs[0].gameId='123'`);
   assert.equal(run('rrCompletedLog(st.gameLogs[0])'),true);
   run(`switchTab('leaders')`);assert.match(app.innerHTML,/Daily leaders/);
-  run(`switchTab('stats')`);assert.match(app.innerHTML,/Actual ROI/);
+  run(`st.comparisonPerformance=[{POLICY:'first-pregame-selection-v1',SPORT:'NHL',SURFACE:'RESEARCH_FEED',EVIDENCE:'ALL',TIME_WINDOW:'last_30d',N_SELECTED:2,N_HITS:1,N_MISSES:1,N_PUSHES:0,N_DNP:0,N_PENDING:0,N_PRICED:2,HIT_RATE:0.5,ROI_PCT:-5,NET_UNITS:-0.1}];switchTab('stats')`);assert.match(app.innerHTML,/Recorded-price return/);
   assert.match(app.innerHTML,/Publication evidence/);
   assert.match(run("renderPublicationEvidence([{TIME_WINDOW:'all_time',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'RECONSTRUCTED_PREGAME_FEED',N_PICKS_DECISIVE:2,HIT_RATE:0.5,ACTUAL_ROI_PCT:-5}], 'all_time')"),/Reconstructed pregame feed/);
   assert.match(run("renderPublicationEvidence([{TIME_WINDOW:'all_time',DIMENSION_TYPE:'publication_cohort',DIMENSION_VALUE:'VERIFIED_PREGAME_FEED',N_PICKS_DECISIVE:2,HIT_RATE:0.5,ACTUAL_ROI_PCT:-5}], 'all_time')"),/Verified pregame feed.*2 decisive.*-5.0%/);

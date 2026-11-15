@@ -1012,7 +1012,8 @@ function loadAllData(){
     fetchSheet("Pick_Performance_Snapshots").catch(()=>[]),
     fetchSheet("Slate_Status").catch(()=>[]),
     fetchSheet("Schedule").catch(()=>[])
-  ]).then(([tonight,logs,gTonight,gLogs,splits,gSplits,props,picks,pickPerformance,pickPerformanceSnaps,slateStatus,schedule])=>{
+  ]).then(async ([tonight,logs,gTonight,gLogs,splits,gSplits,props,picks,pickPerformance,pickPerformanceSnaps,slateStatus,schedule])=>{
+    st.comparisonPerformance=normalizeKeys(cleanRows(await fetchSheet("Comparison_Performance").catch(()=>[])));
     if(!tonight||!logs)throw new Error("Required player sheets unavailable");
     resetDerived();
     st.schedule=normalizeKeys(cleanRows(schedule||[]));
