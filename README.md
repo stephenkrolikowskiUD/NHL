@@ -167,3 +167,12 @@ Matchup time displays include the weekday and Eastern timezone, using existing
 feed timestamps. This distinguishes games on different days without changing
 sorting or model logic. Unavailable times are not invented. Push and refresh the
 dashboard; no engine or grader run is required for this display update.
+
+## NBA-aligned research styling
+
+The research view now shares NBA's compact player identity, 64px desktop / 52px
+mobile portraits, quieter summary strip, and bounded scrolling chart. Hockey's
+fonts, colors, season scopes, and research calculations remain unchanged. Mobile
+market controls stay visible and use 16px text. This is a styling-only update;
+push and refresh. Automated dashboard regressions pass; device visual review is
+still required before calling the cross-sport layout fully verified.

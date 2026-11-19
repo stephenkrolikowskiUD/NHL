@@ -350,3 +350,31 @@ body.light-theme .header{background:var(--surface-0)}body.light-theme .stats-str
 .nhl-team-logo{width:28px;height:28px;object-fit:contain;flex-shrink:0}
 .nhl-matchup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 @media(max-width:480px){.nhl-team-logo{width:24px;height:24px}.nhl-matchup{gap:6px}}
+
+/* Shared research hierarchy with NBA; retain hockey's palette and type. */
+.rr-analysis{min-width:0}
+.rr-analysis .analysis-hero{background:transparent;border:0;border-bottom:1px solid var(--border-1);border-radius:0;padding:20px 0}
+.rr-analysis .analysis-hero-top{align-items:center;gap:16px}
+.rr-analysis .rr-avatar{width:64px;height:64px}
+.rr-analysis .rr-identity{gap:16px}
+.rr-analysis .rr-identity h2{font-size:28px;line-height:1.15}
+.rr-analysis .rr-identity p{font-size:12px;flex-wrap:wrap}
+.rr-analysis .analysis-focus strong{font-size:24px}
+.rr-analysis .rr-toolbar{padding:16px 0;flex-wrap:wrap}
+.rr-analysis .rr-kpis{gap:0;border-bottom:1px solid var(--border-1)}
+.rr-analysis .rr-kpis>div{border:0;border-radius:0;background:transparent;padding:14px 16px}
+.rr-analysis .rr-panel{min-width:0;box-shadow:none}
+.rr-analysis .rr-chart{height:200px;max-width:100%}
+.rr-analysis .rr-bar-column{min-width:38px}
+@media(max-width:767px){
+ .header{position:relative}
+ .rr-analysis .analysis-hero{padding:16px 0}
+ .rr-analysis .rr-avatar{width:52px;height:52px}
+ .rr-analysis .rr-identity{gap:10px}
+ .rr-analysis .rr-identity h2{font-size:22px}
+ .rr-analysis .analysis-focus{margin-left:62px}
+ .rr-analysis .analysis-focus strong{display:block;font-size:22px}
+ .rr-analysis .rr-toolbar select,.rr-analysis .rr-toolbar input{font-size:16px;max-width:100%}
+ .rr-analysis .rr-kpis>div{padding:12px 8px}
+ .rr-analysis .rr-chart{height:180px}
+}
