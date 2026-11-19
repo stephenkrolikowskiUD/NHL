@@ -161,3 +161,9 @@ Daily slate matchups and player-analysis headers now display NHL-hosted team
 logos beside the abbreviations. Missing images fall back to the retained text;
 unknown teams display TBD. This is frontend-only: push and refresh the page,
 with no engine rerun or Odds API usage required.
+## Matchup start-time labels
+
+Matchup time displays include the weekday and Eastern timezone, using existing
+feed timestamps. This distinguishes games on different days without changing
+sorting or model logic. Unavailable times are not invented. Push and refresh the
+dashboard; no engine or grader run is required for this display update.
