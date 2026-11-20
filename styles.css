@@ -359,13 +359,56 @@ body.light-theme .header{background:var(--surface-0)}body.light-theme .stats-str
 .rr-analysis .rr-identity{gap:16px}
 .rr-analysis .rr-identity h2{font-size:28px;line-height:1.15}
 .rr-analysis .rr-identity p{font-size:12px;flex-wrap:wrap}
-.rr-analysis .analysis-focus strong{font-size:24px}
+.rr-analysis .analysis-focus strong{font-size:32px;line-height:1.1}
+.rr-analysis .analysis-focus .rr-focus-metric{font-size:11px;margin-bottom:5px}
 .rr-analysis .rr-toolbar{padding:16px 0;flex-wrap:wrap}
+.rr-analysis .rr-chart-toolbar{padding:0;margin:8px 0;gap:8px}
+.rr-chart-toolbar select,.rr-chart-toolbar input{min-width:0;flex:1 1 100px}
 .rr-analysis .rr-kpis{gap:0;border-bottom:1px solid var(--border-1)}
 .rr-analysis .rr-kpis>div{border:0;border-radius:0;background:transparent;padding:14px 16px}
 .rr-analysis .rr-panel{min-width:0;box-shadow:none}
 .rr-analysis .rr-chart{height:200px;max-width:100%}
 .rr-analysis .rr-bar-column{min-width:38px}
+.rr-research-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
+.rr-research-grid>.rr-panel{margin:0}
+.rr-research-section{min-width:0;margin:0;padding:0;background:transparent;border:0}
+.rr-research-section h3{font-size:13px;color:var(--accent);letter-spacing:.03em;margin-bottom:14px}
+.rr-chart-panel{grid-column:1;grid-row:1}
+.rr-averages-panel{grid-column:2;grid-row:1}
+.rr-splits-panel{grid-column:1;grid-row:2}
+.rr-context-column{grid-column:2;grid-row:2;min-width:0}
+.rr-markets-panel{grid-column:1;grid-row:3}
+.rr-chart-controls{display:flex;flex-wrap:wrap;gap:8px}
+.rr-chart-controls label{flex:1 1 100px;min-width:0;font-size:11px;color:var(--ink-muted)}
+.rr-chart-controls select{display:block;width:100%;margin-top:5px;min-width:0}
+.rr-stat-strip{display:flex;overflow-x:auto;border-bottom:1px solid var(--border-1);margin-bottom:16px;padding:10px 0;gap:20px}
+.rr-stat-strip .rr-average{flex:1 0 90px;padding:0;background:transparent;border:0}
+.rr-average-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.rr-average{padding:14px 10px;background:var(--surface-2);border:1px solid var(--border-1);border-radius:8px;min-width:0;text-align:center}
+.rr-stat-strip .rr-average{text-align:left}
+.rr-split-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.rr-split-card{min-width:0;padding:16px;background:var(--surface-2);border-radius:10px}
+.rr-mini-bars{display:flex;gap:6px;align-items:flex-end;min-height:90px}
+.rr-mini-bar-wrap{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;text-align:center}
+.rr-mini-bar{width:100%;flex-shrink:0;border-radius:3px 3px 0 0;background:var(--accent)}
+.rr-mini-bar-wrap:nth-child(2) .rr-mini-bar{background:var(--ink-muted)}
+.rr-mini-bar-wrap span,.rr-mini-bar-wrap strong{font-size:11px;margin-top:3px;color:var(--ink-1)}
+.rr-mini-bar-wrap small{font-size:10px;line-height:1.4;color:var(--ink-muted);margin-top:4px}
+.rr-average span,.rr-average small{display:block;font-size:11px;color:var(--ink-muted);overflow-wrap:anywhere}
+.rr-average strong{display:block;font-size:24px;color:var(--ink-0);margin:6px 0;font-variant-numeric:tabular-nums}
+.rr-stat-strip .rr-average strong{font-size:18px;margin:4px 0}
+.rr-stat-strip .rr-average small{font-size:10px}
+.rr-chart-empty .rr-empty{padding:12px 0}
+.rr-chart-empty .rr-empty h3{font-size:14px}
+.rr-research-grid+ .rr-panel{margin-top:16px}
+@media(max-width:767px){
+ .rr-research-grid{grid-template-columns:minmax(0,1fr)}
+ .rr-chart-panel,.rr-averages-panel,.rr-splits-panel,.rr-context-column,.rr-markets-panel{grid-column:1;grid-row:auto}
+ .rr-chart-controls select{font-size:16px}
+ .rr-average{padding:10px}
+ .rr-average-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+ .rr-split-card{padding:12px}
+}
 @media(max-width:767px){
  .header{position:relative}
  .rr-analysis .analysis-hero{padding:16px 0}
@@ -373,7 +416,7 @@ body.light-theme .header{background:var(--surface-0)}body.light-theme .stats-str
  .rr-analysis .rr-identity{gap:10px}
  .rr-analysis .rr-identity h2{font-size:22px}
  .rr-analysis .analysis-focus{margin-left:62px}
- .rr-analysis .analysis-focus strong{display:block;font-size:22px}
+ .rr-analysis .analysis-focus strong{display:block;font-size:28px}
  .rr-analysis .rr-toolbar select,.rr-analysis .rr-toolbar input{font-size:16px;max-width:100%}
  .rr-analysis .rr-kpis>div{padding:12px 8px}
  .rr-analysis .rr-chart{height:180px}

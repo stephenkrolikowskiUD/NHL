@@ -168,11 +168,53 @@ feed timestamps. This distinguishes games on different days without changing
 sorting or model logic. Unavailable times are not invented. Push and refresh the
 dashboard; no engine or grader run is required for this display update.
 
-## NBA-aligned research styling
+## NBA-aligned research layout
 
-The research view now shares NBA's compact player identity, 64px desktop / 52px
-mobile portraits, quieter summary strip, and bounded scrolling chart. Hockey's
-fonts, colors, season scopes, and research calculations remain unchanged. Mobile
-market controls stay visible and use 16px text. This is a styling-only update;
-push and refresh. Automated dashboard regressions pass; device visual review is
-still required before calling the cross-sport layout fully verified.
+The active `rrAnalysis` view now ports the NBA research structure, not just its
+styling: compact player identity and research line, a hockey-stat strip, equal
+desktop columns with chart left and average cards right, H2H and home/away below
+the chart, matchup context on the right, and markets in the next left grid cell.
+Mobile stacks these panels.
+The NHL schedule stays above research; existing fonts and theme colors remain.
+Chart and averages are unboxed sections; only the individual average cards have
+backgrounds. Desktop averages are one row: Season, L10, L5, Last (mobile: 2x2).
+All loaded history labels its aggregate Sample rather than implying one season.
+Two side-by-side split cards show H2H versus Season and Home versus Away mini
+bars, with measured/game counts for each value. Missing values have no bar.
+The player header uses a plain name and context without a research eyebrow.
+Its small metric/direction label sits above the large numeric research line.
+The stat strip follows the header directly; scope and lean controls sit in a
+compact second controls row inside the chart section.
+
+Range, Opponent and Venue filter the chart, outcome counts and game-log table.
+Opponent/venue filtering happens before the recent-game limit. Averages and
+splits use the full selected season/game-type scope, unaffected by chart filters.
+The chart displays at most 20 games and explicitly labels truncation; outcomes
+and the table use the full selected range. Counts distinguish scoped, matching,
+selected and measured games. Missing metric values are excluded, not made zero;
+save percentages retain three decimal places. H2H requires a verified current
+opponent and uses only loaded records in the selected scope.
+
+Missing-history views keep the same layout with a concise chart empty state.
+Unclassified games remain available only under All loaded history; no unknown
+history is reclassified as current-season regular-season data. Missing markets,
+line assignments and goalie confirmations retain their existing safeguards.
+This is frontend-only: deploy and refresh; no engine run or API credits required.
+
+Validation commands (offline fixtures; no Sheet writes):
+
+```sh
+node --check app.js
+node --check research.js
+node tests/dashboard.cjs
+node tests/research_layout.cjs
+node tests/test_comparison_dashboard.cjs
+python3 -m unittest discover -s tests -p 'test_*.py'
+```
+
+For static rendered browser QA, run `NHL_RESEARCH_PREVIEW=1 node tests/research_layout.cjs`.
+It exports `/tmp/nhl-research-preview.html` (12 synthetic logs, known BOS/NYR
+matchup) and `/tmp/nhl-research-empty-preview.html` (unclassified history), with
+the stylesheet inline. These are labeled synthetic fixtures, not real statistics
+or prices. Controls are static in the exports; their behavior is tested in the
+VM harness. Desktop/mobile browser visual verification remains a separate step.
