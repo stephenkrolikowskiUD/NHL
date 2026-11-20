@@ -1728,6 +1728,14 @@ except Exception as e:
 print("\n🤖 Generating Gemini AI picks...")
 
 daily_picks = []
+from accuracy_archive import archive
+archive('NHL', 'inputs', runlog.run_id, {
+    'slate_date': TODAY, 'schedule': schedule_rows,
+    'skaters': skater_tonight, 'goalies': goalie_tonight,
+    'skater_history': skater_logs, 'goalie_history': goalie_logs,
+    'skater_splits': skater_splits, 'goalie_splits': goalie_splits,
+    'props': all_props, 'all_book_props': df_all_books,
+})
 existing_daily_picks = load_existing_daily_picks("Daily_Picks", TODAY)
 seen_pick_keys = set()
 if len(existing_daily_picks) > 0:
@@ -1986,6 +1994,8 @@ if GEMINI_API_KEY and len(games) > 0 and (len(skater_tonight) > 0 or len(goalie_
                     f"L3: {p.get('L3_PTS',0):.2f}P {p.get('L3_G',0):.2f}G {p.get('L3_SOG',0):.2f}SOG {p.get('L3_BLK',0):.2f}BLK {p.get('L3_HITS',0):.2f}HIT {p.get('L3_UD_FP',0):.1f}UD_FP | "
                     f"vs {p.get('opp_goalie_name','TBD')}{f' ({goalie_status})' if goalie_status else ''} SV%:{opp_goalie_svp:.3f} | {matchup_str}{split_str}{streak_str}{sample_str} | Props: {prop_str}{prop_signal_str}"
                 )
+        archive('NHL', 'candidate-context', runlog.run_id, {
+            'slate_date': TODAY, 'player_summaries': player_summaries})
         prompt = f"""You are an NHL props analyst. Today is {TODAY}. NHL {'Playoffs' if GAME_TYPE==3 else 'Regular Season'}.
 
 Current-season samples are separate from prior history. Zero games means unavailable evidence, not zero talent. Do not infer role or injuries from a small sample.
@@ -2081,6 +2091,7 @@ IMPORTANT: Return ONLY the JSON array. No markdown, no preamble."""
             pk['player'] = valid_player_map[pname_norm]
             filtered_ai_picks.append(pk)
         ai_picks = filtered_ai_picks
+        archive('NHL', 'candidates-before-cap', runlog.run_id, {'picks': ai_picks})
         dropped = bf - len(ai_picks)
         print(f"  Gemini picks after post-filter: {len(ai_picks)}")
         if dropped > 0:
@@ -2251,6 +2262,7 @@ else:
 # 📤 STEP 9: UPLOAD TO GOOGLE SHEETS
 # ═══════════════════════════════════════════════
 print("\n📤 Uploading to Google Sheets...")
+archive('NHL', 'selected-before-publication', runlog.run_id, {'picks': daily_picks})
 safe_upload("Schedule", schedule_rows)
 safe_upload("Tonights_Skaters", skater_tonight)
 safe_upload("Skater_Game_Logs", skater_logs)

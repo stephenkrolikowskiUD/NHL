@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
+      NHL_AUDIT_DIR: nhl_accuracy_snapshots
       ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
@@ -32,3 +33,12 @@ jobs:
 
       - name: Run NHL engine
         run: python NHLEngine5-4.py
+
+      - name: Save prediction audit inputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhl-accuracy-inputs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: nhl_accuracy_snapshots/
+          retention-days: 90
+          if-no-files-found: warn
